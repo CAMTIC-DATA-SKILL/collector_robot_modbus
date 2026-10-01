@@ -9,12 +9,13 @@ import threading
 
 from rclpy.qos import qos_profile_sensor_data
 
-from .config import RosClientConfig
+from config import ros_client_config
+
 from .ros_client import RosClient
 
 
 def main() -> None:
-    config = RosClientConfig.from_env()
+    config = ros_client_config()
 
     parser = argparse.ArgumentParser(description="ROS client topic echo")
     parser.add_argument("--node-name", default=config.node_name)

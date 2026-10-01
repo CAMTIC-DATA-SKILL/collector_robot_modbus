@@ -4,11 +4,13 @@
 ## 구성
 
 ```
+main.py                  # 진입점: Modbus 연결 → 메모리 맵 JSON 의 포인트를 주기적으로 읽기
+config.py                # .env 로딩. 환경 변수는 모두 여기서만 읽는다
+memory_map.example.json  # 메모리 맵 예시 (memory_map.json 으로 복사해서 사용)
 core/
 ├── modbus_tcp_client/   # Modbus 클라이언트 (BaseModbusClient ← ModbusTcpClient / ModbusRtuClient), 메모리 맵 읽기
 └── ros2_client/         # ROS 2(rclpy) 클라이언트
 model/                   # pydantic 모델 (메모리 맵 스키마, 읽기 요청, 읽기 결과)
-config/                  # 메모리 맵 JSON 예시
 script/                  # 스모크 테스트
 ```
 
@@ -20,7 +22,28 @@ ROS 2 Humble 과 Python 3.10 기준이다. rclpy 등 ROS 파이썬 패키지는 
 python3.10 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env
+cp memory_map.example.json memory_map.json
 ```
+
+## 실행
+
+```bash
+python main.py
+```
+
+`.env` 의 `MODBUS_MODE`(tcp/rtu) 접속 정보로 연결하고, `MEMORY_MAP_FILE` 의 포인트를
+`POLL_INTERVAL_SEC` 마다 읽어 로그로 출력한다. 연결이 끊기면 `RECONNECT_INTERVAL_SEC` 후 다시 연결한다.
+시작 시 실제로 나갈 읽기 요청(묶인 범위)을 먼저 출력한다.
+
+```
+INFO collector: memory map memory_map.json, read plan:
+holding 0~13 (14 regs): status_code, sensor_mode, temperature, ...
+INFO collector: {"status_code": 1, "sensor_mode": 2, "temperature": 25.8, ...}
+WARNING collector: read errors: {'battery_voltage': 'E-2203'}
+```
+
+환경 변수 목록과 기본값은 `.env.example` 참고. 코드에서는 `from config import settings` 로만 참조한다.
 
 ROS 2 스모크 테스트를 돌릴 때는 venv 활성화 전에 ROS 환경을 먼저 불러온다.
 
@@ -84,12 +107,7 @@ python script/smoke_modbus_rtu.py --port /dev/ttyUSB0 --kind coil --address 0 --
 
 TCP 전용: `--host`, `--port` / RTU 전용: `--port`, `--baudrate`, `--parity`(N/E/O), `--stopbits`(1/2), `--local-echo`
 
-옵션을 주지 않은 값은 환경변수를 따른다.
-
-| TCP | RTU |
-| --- | --- |
-| `MODBUS_TCP_HOST`, `MODBUS_TCP_PORT` | `MODBUS_RTU_PORT`, `MODBUS_RTU_BAUDRATE`, `MODBUS_RTU_PARITY`, `MODBUS_RTU_STOPBITS`, `MODBUS_RTU_BYTESIZE`, `MODBUS_RTU_LOCAL_ECHO` |
-| `MODBUS_TCP_DEVICE_ID`, `MODBUS_TCP_TIMEOUT`, `MODBUS_TCP_RETRIES` | `MODBUS_RTU_DEVICE_ID`, `MODBUS_RTU_TIMEOUT`, `MODBUS_RTU_RETRIES` |
+옵션을 주지 않은 값은 `.env` 의 `MODBUS_TCP_*` / `MODBUS_RTU_*` 값(`config.py`)을 따른다.
 
 단, 시뮬레이터 모드 여부는 `--host` / `--port` 인자로만 결정된다.
 
@@ -124,27 +142,24 @@ python script/smoke_ros2_client.py --topic /joint_states --type sensor_msgs/msg/
 | `--timeout` | 메시지/서비스 대기 시간(초, 기본 5) |
 | `--node-name` | 노드 이름 (기본 `collector_smoke_<pid>`) |
 
-도메인은 `ROS_DOMAIN_ID` 환경변수를 따른다. 로봇과 같은 도메인에서 외부 토픽을 점검해야 한다.
+도메인은 `.env` 의 `ROS_DOMAIN_ID` 를 따른다. 로봇과 같은 도메인에서 외부 토픽을 점검해야 한다.
 
 점검 항목: 노드 시작, 자기 토픽 publish/subscribe 루프백, 중복 구독(`RosClientError`),
 타입 충돌·미존재 타입(`RosMessageTypeError`), 구독 해제, `std_srvs/srv/Trigger` 서비스 호출,
 구독 콜백 안에서 서비스 호출 시 교착이 없는지, 없는 서비스 호출(`RosTimeoutError`),
 노드 종료 후 호출(`RosConnectionError`), (옵션) 외부 토픽 수신.
 
-### 빠른 확인용 CLI
+### ROS 2 토픽 확인용 CLI
 
-통과/실패 판정 없이 값만 계속 보고 싶을 때는 패키지 CLI 를 쓴다.
+통과/실패 판정 없이 토픽 메시지만 계속 보고 싶을 때 쓴다.
 
 ```bash
-python -m core.modbus_tcp_client tcp --host 192.168.0.10 --kind holding --address 0 --count 10 --interval 1
-python -m core.modbus_tcp_client rtu --port /dev/ttyUSB0 --baudrate 9600 --kind coil --count 8
-python -m core.modbus_tcp_client tcp --host 192.168.0.10 --map config/memory_map.example.json --interval 1
 python -m core.ros2_client --topic /chatter --type std_msgs/msg/String
 ```
 
 ## 메모리 맵 (8bit/16bit/32bit 혼합 레지스터)
 
-장비 매뉴얼의 레지스터 맵을 JSON 에 포인트마다 `addr` / `type` / `name` 으로 옮겨 적는다 (`config/memory_map.example.json` 참고).
+장비 매뉴얼의 레지스터 맵을 JSON 에 포인트마다 `addr` / `type` / `name` 으로 옮겨 적는다 (`memory_map.example.json` 참고).
 읽기 요청은 주소를 보고 자동으로 묶으므로 시작 번지·개수를 따로 정하지 않는다.
 
 ```json
@@ -175,18 +190,12 @@ python -m core.ros2_client --topic /chatter --type std_msgs/msg/String
 쪼갠 계획을 다음 읽기부터 그대로 쓴다. 그래도 실패한 포인트만 `Sample.error` 에 코드가 남고 나머지 값은 살아 있다.
 
 ```python
-from core.modbus_tcp_client import MemoryMap, ModbusTcpClient, ModbusTcpConfig
+from config import settings
+from core.modbus_tcp_client import MemoryMap, ModbusTcpClient
 
-memory_map = MemoryMap.from_json("config/memory_map.example.json")
-with ModbusTcpClient(ModbusTcpConfig(host="192.168.0.10")) as client:
+memory_map = MemoryMap.from_json(settings.memory_map_file)
+print(memory_map.describe_plan())       # 실제로 나갈 요청 (장비 없이 확인 가능)
+with ModbusTcpClient(settings.modbus_tcp) as client:
     samples = memory_map.read(client)   # [Sample(name="status_code", value=1, error=None, ...), ...]
     values = MemoryMap.values(samples)  # {"status_code": 1, "temperature": -20.0, ...} (실패 포인트 제외)
-```
-
-실제로 나갈 요청은 장비 없이 확인할 수 있다.
-
-```bash
-python -m core.modbus_tcp_client tcp --map config/memory_map.example.json --plan
-# holding 0~13 (14 regs): status_code, sensor_mode, temperature, humidity, servo_on, joint_torque, run_counter, alarm_code
-# input 100~102 (3 regs): battery_voltage, error_flags
 ```

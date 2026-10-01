@@ -6,8 +6,8 @@ from .config import ModbusRtuConfig
 
 
 class ModbusRtuClient(BaseModbusClient):
-    def __init__(self, config: ModbusRtuConfig | None = None) -> None:
-        self.config = config or ModbusRtuConfig.from_env()
+    def __init__(self, config: ModbusRtuConfig) -> None:
+        self.config = config
         super().__init__(device_id=self.config.device_id)
 
     def _build_client(self) -> ModbusSerialClient:

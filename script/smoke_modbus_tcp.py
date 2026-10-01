@@ -9,6 +9,7 @@
     python script/smoke_modbus_tcp.py --host 192.168.0.10 --kind holding --address 100 --write
 """
 import argparse
+import dataclasses
 import logging
 import sys
 
@@ -22,6 +23,7 @@ from _modbus_smoke import (
     stop_simulator,
 )
 
+from config import settings
 from core.modbus_tcp_client import ModbusTcpClient, ModbusTcpConfig
 
 SIM_HOST = "127.0.0.1"
@@ -30,7 +32,7 @@ UNREACHABLE_PORT = 1
 
 
 def main() -> int:
-    config = ModbusTcpConfig.from_env()
+    config = dataclasses.replace(settings.modbus_tcp)
 
     parser = argparse.ArgumentParser(description="Modbus TCP client smoke test")
     parser.add_argument("--host", help="device host (omit to run against built-in simulator)")

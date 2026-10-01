@@ -20,9 +20,9 @@ from _smoke import SmokeAbort, SmokeRunner, expect
 from rclpy.qos import qos_profile_sensor_data
 from std_srvs.srv import Trigger
 
+from config import ros_client_config, settings
 from core.ros2_client import (
     RosClient,
-    RosClientConfig,
     RosClientError,
     RosConnectionError,
     RosMessageTypeError,
@@ -95,7 +95,7 @@ def _wait_external(client: RosClient, topic: str, msg_type: str, sensor_qos: boo
 
 
 def main() -> int:
-    config = RosClientConfig.from_env()
+    config = ros_client_config()
 
     parser = argparse.ArgumentParser(description="ROS 2 client smoke test")
     parser.add_argument("--node-name", default=f"collector_smoke_{os.getpid()}")
@@ -117,7 +117,7 @@ def main() -> int:
     prefix = f"/{args.node_name}"
     chatter, callback_topic, service = f"{prefix}/chatter", f"{prefix}/call", f"{prefix}/trigger"
 
-    runner = SmokeRunner(f"ROS 2 client node={config.node_name} domain={os.getenv('ROS_DOMAIN_ID', '0')}")
+    runner = SmokeRunner(f"ROS 2 client node={config.node_name} domain={settings.ros_domain_id}")
     client = RosClient(config)
     try:
         runner.check("connect", client.connect, required=True)

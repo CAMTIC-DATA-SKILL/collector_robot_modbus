@@ -10,6 +10,7 @@
     python script/smoke_modbus_rtu.py --port /dev/ttyUSB0 --kind coil --address 0 --write
 """
 import argparse
+import dataclasses
 import logging
 import sys
 
@@ -23,13 +24,14 @@ from _modbus_smoke import (
     stop_simulator,
 )
 
+from config import settings
 from core.modbus_tcp_client import ModbusRtuClient, ModbusRtuConfig
 
 UNREACHABLE_PORT = "/dev/tty-modbus-smoke-missing"
 
 
 def main() -> int:
-    config = ModbusRtuConfig.from_env()
+    config = dataclasses.replace(settings.modbus_rtu)
 
     parser = argparse.ArgumentParser(description="Modbus RTU client smoke test")
     parser.add_argument("--port", help="serial device, e.g. /dev/ttyUSB0 (omit to run against built-in simulator)")

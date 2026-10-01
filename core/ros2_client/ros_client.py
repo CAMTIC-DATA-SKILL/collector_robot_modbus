@@ -36,8 +36,8 @@ class RosClient:
     - 타입 문자열은 `std_msgs/msg/String`, `std_srvs/srv/Trigger` 형식을 사용한다.
     """
 
-    def __init__(self, config: RosClientConfig | None = None) -> None:
-        self.config = config or RosClientConfig.from_env()
+    def __init__(self, config: RosClientConfig) -> None:
+        self.config = config
         self._lock = threading.RLock()
         self._context: Context | None = None
         self._node: Node | None = None

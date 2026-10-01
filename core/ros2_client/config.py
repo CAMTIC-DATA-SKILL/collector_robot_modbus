@@ -1,9 +1,10 @@
-import os
 from dataclasses import dataclass
 
 
 @dataclass(slots=True)
 class RosClientConfig:
+    """환경 변수 값은 루트 config.py 에서 채운다."""
+
     node_name: str = "collector_ros_client"
     namespace: str = ""
     # None 이면 rcl 이 ROS_DOMAIN_ID 환경변수를 사용한다
@@ -13,16 +14,3 @@ class RosClientConfig:
     num_threads: int | None = None
     service_timeout: float = 5.0
     shutdown_timeout: float = 5.0
-
-    @classmethod
-    def from_env(cls) -> "RosClientConfig":
-        defaults = cls()
-        num_threads = os.getenv("ROS_CLIENT_NUM_THREADS")
-        return cls(
-            node_name=os.getenv("ROS_CLIENT_NODE_NAME", defaults.node_name),
-            namespace=os.getenv("ROS_CLIENT_NAMESPACE", defaults.namespace),
-            qos_depth=int(os.getenv("ROS_CLIENT_QOS_DEPTH", defaults.qos_depth)),
-            num_threads=int(num_threads) if num_threads else defaults.num_threads,
-            service_timeout=float(os.getenv("ROS_CLIENT_SERVICE_TIMEOUT", defaults.service_timeout)),
-            shutdown_timeout=float(os.getenv("ROS_CLIENT_SHUTDOWN_TIMEOUT", defaults.shutdown_timeout)),
-        )

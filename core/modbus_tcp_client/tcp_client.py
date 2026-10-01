@@ -6,8 +6,8 @@ from .config import ModbusTcpConfig
 
 
 class ModbusTcpClient(BaseModbusClient):
-    def __init__(self, config: ModbusTcpConfig | None = None) -> None:
-        self.config = config or ModbusTcpConfig.from_env()
+    def __init__(self, config: ModbusTcpConfig) -> None:
+        self.config = config
         super().__init__(device_id=self.config.device_id)
 
     def _build_client(self) -> PymodbusTcpClient:
