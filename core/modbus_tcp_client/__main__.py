@@ -3,6 +3,8 @@
 예) python -m core.modbus_tcp_client tcp --host 192.168.0.10 --kind holding --address 0 --count 10
     python -m core.modbus_tcp_client rtu --port /dev/ttyUSB0 --baudrate 9600 --kind coil --address 0 --count 8
     python -m core.modbus_tcp_client tcp --host 192.168.0.10 --address 0 --count 4 --interval 1
+    python -m core.modbus_tcp_client tcp --host 192.168.0.10 --map config/memory_map.example.json
+    python -m core.modbus_tcp_client tcp --map config/memory_map.example.json --plan
 """
 import argparse
 import logging
@@ -12,6 +14,7 @@ import threading
 from .base_client import BaseModbusClient
 from .config import ModbusRtuConfig, ModbusTcpConfig
 from .exceptions import ModbusClientError
+from .memory_map import MemoryMap
 from .rtu_client import ModbusRtuClient
 from .tcp_client import ModbusTcpClient
 
@@ -45,6 +48,8 @@ def main() -> None:
     common.add_argument("--address", type=int, default=0, help="0-based offset")
     common.add_argument("--count", type=int, default=1)
     common.add_argument("--interval", type=float, default=0.0, help="seconds between polls (0 = read once)")
+    common.add_argument("--map", help="memory map JSON; overrides --kind/--address/--count")
+    common.add_argument("--plan", action="store_true", help="print read requests planned from --map and exit")
 
     parser = argparse.ArgumentParser(description="Modbus client read test")
     sub = parser.add_subparsers(dest="mode", required=True)
@@ -63,11 +68,22 @@ def main() -> None:
     signal.signal(signal.SIGINT, lambda *_: stop.set())
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
 
+    memory_map = MemoryMap.from_json(args.map) if args.map else None
+    if args.plan:
+        if memory_map is None:
+            parser.error("--plan requires --map")
+        print(memory_map.describe_plan())
+        return
+
     read = _READERS[args.kind]
     with _build_client(args) as client:
         while True:
             try:
-                print(read(client, args.address, args.count), flush=True)
+                if memory_map:
+                    samples = memory_map.read(client)
+                    print({s.name: s.value if s.error is None else s.error for s in samples}, flush=True)
+                else:
+                    print(read(client, args.address, args.count), flush=True)
             except ModbusClientError as e:
                 logging.error("%s", e)
             if args.interval <= 0 or stop.wait(args.interval):

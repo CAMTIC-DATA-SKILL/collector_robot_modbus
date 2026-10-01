@@ -5,8 +5,10 @@
 
 ```
 core/
-├── modbus_tcp_client/   # Modbus 클라이언트 (BaseModbusClient ← ModbusTcpClient / ModbusRtuClient)
+├── modbus_tcp_client/   # Modbus 클라이언트 (BaseModbusClient ← ModbusTcpClient / ModbusRtuClient), 메모리 맵 읽기
 └── ros2_client/         # ROS 2(rclpy) 클라이언트
+model/                   # pydantic 모델 (메모리 맵 스키마, 읽기 요청, 읽기 결과)
+config/                  # 메모리 맵 JSON 예시
 script/                  # 스모크 테스트
 ```
 
@@ -136,5 +138,55 @@ python script/smoke_ros2_client.py --topic /joint_states --type sensor_msgs/msg/
 ```bash
 python -m core.modbus_tcp_client tcp --host 192.168.0.10 --kind holding --address 0 --count 10 --interval 1
 python -m core.modbus_tcp_client rtu --port /dev/ttyUSB0 --baudrate 9600 --kind coil --count 8
+python -m core.modbus_tcp_client tcp --host 192.168.0.10 --map config/memory_map.example.json --interval 1
 python -m core.ros2_client --topic /chatter --type std_msgs/msg/String
+```
+
+## 메모리 맵 (8bit/16bit/32bit 혼합 레지스터)
+
+장비 매뉴얼의 레지스터 맵을 JSON 에 포인트마다 `addr` / `type` / `name` 으로 옮겨 적는다 (`config/memory_map.example.json` 참고).
+읽기 요청은 주소를 보고 자동으로 묶으므로 시작 번지·개수를 따로 정하지 않는다.
+
+```json
+{
+  "word_endian": "le",
+  "max_gap": 8,
+  "format": "dec",
+  "holding": [
+    {"addr": "0.8~F", "type": "u8",     "name": "status_code"},
+    {"addr": "1",     "type": "i16",    "name": "temperature", "scale": 0.1},
+    {"addr": "5",     "type": "i16[6]", "name": "joint_torque"},
+    {"addr": "13",    "type": "u16",    "name": "alarm_code", "format": "hex"}
+  ],
+  "input": [{"addr": "100", "type": "f32", "name": "battery_voltage"}]
+}
+```
+
+| 키 | 설명 |
+| --- | --- |
+| `addr` | 0-based 레지스터 번호. `100.5` 는 비트 하나, `100.8~F` 는 비트 구간 (0 = LSB, 10~15 는 A~F) |
+| `type` | `u16` `i16` `u32` `i32` `u64` `i64` `f32` `f64` 는 레지스터 단위, `u8` `i8` `bit` 는 비트 구간으로 지정. `i16[6]` 처럼 배열 가능 |
+| `scale` | 디코딩 값에 곱할 배율 |
+| `format` | `dec`(기본) / `hex`. 최상위에 두면 전체 기본값, 포인트에 두면 그 포인트만. hex 는 scale 을 적용하지 않은 원시 비트를 `"0xFF38"` 처럼 낸다 |
+| `word_endian` | 2레지스터 이상 값의 순서. `le`(기본, 앞 레지스터가 하위 워드) / `be`. collector-plc 와 같은 의미 |
+| `max_gap` | 빈 번지가 이 개수 이하면 같은 요청으로 묶는다 (기본 8). 한 요청은 최대 125 레지스터 |
+
+장비가 묶은 범위를 `ILLEGAL DATA ADDRESS` 로 거부하면 레지스터를 공유하는 포인트 단위로 쪼개 다시 읽고,
+쪼갠 계획을 다음 읽기부터 그대로 쓴다. 그래도 실패한 포인트만 `Sample.error` 에 코드가 남고 나머지 값은 살아 있다.
+
+```python
+from core.modbus_tcp_client import MemoryMap, ModbusTcpClient, ModbusTcpConfig
+
+memory_map = MemoryMap.from_json("config/memory_map.example.json")
+with ModbusTcpClient(ModbusTcpConfig(host="192.168.0.10")) as client:
+    samples = memory_map.read(client)   # [Sample(name="status_code", value=1, error=None, ...), ...]
+    values = MemoryMap.values(samples)  # {"status_code": 1, "temperature": -20.0, ...} (실패 포인트 제외)
+```
+
+실제로 나갈 요청은 장비 없이 확인할 수 있다.
+
+```bash
+python -m core.modbus_tcp_client tcp --map config/memory_map.example.json --plan
+# holding 0~13 (14 regs): status_code, sensor_mode, temperature, humidity, servo_on, joint_torque, run_counter, alarm_code
+# input 100~102 (3 regs): battery_voltage, error_flags
 ```

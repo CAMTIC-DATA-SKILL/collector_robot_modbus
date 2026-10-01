@@ -1,0 +1,19 @@
+{
+  "word_endian": "le",
+  "max_gap": 8,
+  "format": "dec",
+  "holding": [
+    {"addr": "0.8~F", "type": "u8", "name": "status_code"},
+    {"addr": "0.0~7", "type": "u8", "name": "sensor_mode"},
+    {"addr": "1", "type": "i16", "name": "temperature", "scale": 0.1},
+    {"addr": "2", "type": "u16", "name": "humidity"},
+    {"addr": "3.0", "type": "bit", "name": "servo_on"},
+    {"addr": "5", "type": "i16[6]", "name": "joint_torque"},
+    {"addr": "11", "type": "u32", "name": "run_counter"},
+    {"addr": "13", "type": "u16", "name": "alarm_code", "format": "hex"}
+  ],
+  "input": [
+    {"addr": "100", "type": "f32", "name": "battery_voltage"},
+    {"addr": "102", "type": "u16", "name": "error_flags", "format": "hex"}
+  ]
+}

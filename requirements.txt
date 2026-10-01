@@ -7,3 +7,6 @@ PyYAML>=5.4
 
 # Modbus TCP/RTU (serial extra = pyserial)
 pymodbus[serial]>=3.15,<4
+
+# model/ 스키마 검증
+pydantic>=2,<3

@@ -11,7 +11,7 @@ from _smoke import SmokeRunner, expect
 from pymodbus.server import ServerStop, StartSerialServer, StartTcpServer
 from pymodbus.simulator import DataType, SimData, SimDevice
 
-from core.modbus_tcp_client import BaseModbusClient, ModbusClientError, ModbusErrorCode
+from core.modbus_tcp_client import BaseModbusClient, MemoryMap, ModbusClientError, ModbusErrorCode
 
 SIM_SIZE = 100
 SIM_HOLDING = 5
@@ -132,6 +132,43 @@ def run_simulator_suite(runner: SmokeRunner, client: BaseModbusClient) -> None:
     runner.check("write_coils + readback", write_coils)
     runner.check("write_register + readback", write_register)
     runner.check("write_registers + readback", write_registers)
+
+    def memory_map_read() -> str:
+        client.write_registers(30, [0x1234, 0xFF38, 0x0002, 0x0001])
+        client.write_registers(40, [1, 0xFFFF, 3])
+        memory_map = MemoryMap.from_dict({
+            "holding": [
+                {"addr": "30.8~F", "type": "u8", "name": "high"},
+                {"addr": "30.0~7", "type": "u8", "name": "low"},
+                {"addr": "30.4", "type": "bit", "name": "flag"},
+                {"addr": "31", "type": "i16", "name": "temp"},
+                {"addr": "31", "type": "i16", "name": "temp_hex", "format": "hex"},
+                {"addr": "32", "type": "u32", "name": "counter"},
+                {"addr": "40", "type": "i16[3]", "name": "torque"},
+            ],
+        })
+        expect(len(memory_map.plan), 1)
+        expect(
+            MemoryMap.values(memory_map.read(client)),
+            {"high": 0x12, "low": 0x34, "flag": 1, "temp": -200, "temp_hex": "0xFF38", "counter": 65538, "torque": [1, -1, 3]},
+        )
+        return memory_map.describe_plan()
+
+    def memory_map_split() -> str:
+        memory_map = MemoryMap.from_dict({
+            "holding": [
+                {"addr": SIM_SIZE - 2, "type": "u16", "name": "valid"},
+                {"addr": SIM_SIZE + 1, "type": "u16", "name": "invalid"},
+            ],
+        })
+        expect(len(memory_map.plan), 1)
+        samples = {s.name: (s.value, s.error) for s in memory_map.read(client)}
+        expect(samples, {"valid": (SIM_HOLDING, None), "invalid": (None, ModbusErrorCode.ADDR_OUT_OF_RANGE.value)})
+        expect(len(memory_map.plan), 2)
+        return memory_map.describe_plan().replace("\n", " | ")
+
+    runner.check("memory map batch read + decode", memory_map_read)
+    runner.check("memory map range rejected -> split + per-point error", memory_map_split)
 
     runner.expect_raises(
         "out-of-range read -> ADDR_OUT_OF_RANGE",
