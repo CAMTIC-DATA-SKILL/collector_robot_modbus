@@ -25,7 +25,7 @@ from _modbus_smoke import (
 )
 
 from config import settings
-from core.modbus_tcp_client import ModbusRtuClient, ModbusRtuConfig
+from core.modbus_client import ModbusRtuClient, ModbusRtuConfig
 
 UNREACHABLE_PORT = "/dev/tty-modbus-smoke-missing"
 

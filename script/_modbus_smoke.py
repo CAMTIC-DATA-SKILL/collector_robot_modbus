@@ -11,7 +11,7 @@ from _smoke import SmokeRunner, expect
 from pymodbus.server import ServerStop, StartSerialServer, StartTcpServer
 from pymodbus.simulator import DataType, SimData, SimDevice
 
-from core.modbus_tcp_client import BaseModbusClient, MemoryMap, ModbusClientError, ModbusErrorCode
+from core.modbus_client import BaseModbusClient, MemoryMap, ModbusClientError, ModbusErrorCode
 
 SIM_SIZE = 100
 SIM_HOLDING = 5

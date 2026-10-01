@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 
-from core.modbus_tcp_client.config import ModbusRtuConfig, ModbusTcpConfig
+from core.modbus_client.config import ModbusRtuConfig, ModbusTcpConfig
 
 if TYPE_CHECKING:
     from core.ros2_client.config import RosClientConfig

@@ -9,7 +9,7 @@ import threading
 import time
 
 from config import settings
-from core.modbus_tcp_client import BaseModbusClient, MemoryMap, ModbusClientError, ModbusRtuClient, ModbusTcpClient
+from core.modbus_client import BaseModbusClient, MemoryMap, ModbusClientError, ModbusRtuClient, ModbusTcpClient
 from model import Sample
 
 logger = logging.getLogger("collector")

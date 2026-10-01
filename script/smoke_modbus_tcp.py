@@ -24,7 +24,7 @@ from _modbus_smoke import (
 )
 
 from config import settings
-from core.modbus_tcp_client import ModbusTcpClient, ModbusTcpConfig
+from core.modbus_client import ModbusTcpClient, ModbusTcpConfig
 
 SIM_HOST = "127.0.0.1"
 SIM_PORT = 15020

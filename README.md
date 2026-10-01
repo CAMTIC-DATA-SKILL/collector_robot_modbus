@@ -8,7 +8,7 @@ main.py                  # 진입점: Modbus 연결 → 메모리 맵 JSON 의 �
 config.py                # .env 로딩. 환경 변수는 모두 여기서만 읽는다
 memory_map.example.json  # 메모리 맵 예시 (memory_map.json 으로 복사해서 사용)
 core/
-├── modbus_tcp_client/   # Modbus 클라이언트 (BaseModbusClient ← ModbusTcpClient / ModbusRtuClient), 메모리 맵 읽기
+├── modbus_client/       # Modbus 클라이언트 (BaseModbusClient ← ModbusTcpClient / ModbusRtuClient), 메모리 맵 읽기
 └── ros2_client/         # ROS 2(rclpy) 클라이언트
 model/                   # pydantic 모델 (메모리 맵 스키마, 읽기 요청, 읽기 결과)
 script/                  # 스모크 테스트
@@ -191,7 +191,7 @@ python -m core.ros2_client --topic /chatter --type std_msgs/msg/String
 
 ```python
 from config import settings
-from core.modbus_tcp_client import MemoryMap, ModbusTcpClient
+from core.modbus_client import MemoryMap, ModbusTcpClient
 
 memory_map = MemoryMap.from_json(settings.memory_map_file)
 print(memory_map.describe_plan())       # 실제로 나갈 요청 (장비 없이 확인 가능)
