@@ -1,4 +1,4 @@
-"""JSON 메모리 맵으로 읽기 요청을 자동으로 묶고 값을 디코딩한다. 스키마는 model.memory_map_model 참고.
+"""JSON 메모리 맵으로 읽기 요청을 자동으로 묶고 값을 디코딩한다 (쓰기용 encode 도 제공). 스키마는 model.memory_map_model 참고.
 
     {
       "word_endian": "le",
@@ -46,6 +46,7 @@ _READERS = {
     RegisterKind.HOLDING: BaseModbusClient.read_holding_registers,
     RegisterKind.INPUT: BaseModbusClient.read_input_registers,
 }
+_SIGNED_TYPES = {PointType.I8, PointType.I16, PointType.I32, PointType.I64}
 
 
 class MemoryMap:
@@ -99,6 +100,29 @@ class MemoryMap:
             items.append(self._convert(point, int.from_bytes(b"".join(w.to_bytes(2, "big") for w in words), "big")))
         return items[0] if point.length == 1 else items
 
+    def encode(self, point: MemoryMapPoint, value: Value, current: list[int] | None = None) -> list[int]:
+        """decode 의 역. 포인트가 차지하는 레지스터에 쓸 값을 만든다.
+
+        비트 구간 포인트는 같은 레지스터의 나머지 비트를 보존해야 하므로 현재 레지스터 값(current)이 필요하다.
+        "0xFF38" 같은 hex 문자열은 scale 없이 원시 비트로 쓴다.
+        """
+        items = value if isinstance(value, list) else [value]
+        if len(items) != point.length:
+            raise ValueError(f"{point.name}: 값 {len(items)}개, 필요 {point.length}개")
+        if point.bits:
+            if current is None:
+                raise ValueError(f"{point.name}: 비트 구간 쓰기는 현재 레지스터 값이 필요하다")
+            lo, hi = point.bits
+            mask = ((1 << (hi - lo + 1)) - 1) << lo
+            return [(current[0] & ~mask) | (self._to_raw(point, items[0]) << lo)]
+        words_per_item = point.point_type.width // 16
+        registers: list[int] = []
+        for item in items:
+            raw = self._to_raw(point, item)
+            words = [(raw >> (16 * i)) & 0xFFFF for i in range(words_per_item)]
+            registers += words if self.settings.word_endian is WordEndian.LE else words[::-1]
+        return registers
+
     def _execute(self, client: BaseModbusClient, request: ReadRequest, samples: dict[str, Sample]) -> list[ReadRequest]:
         try:
             registers = _read_registers(client, request)
@@ -132,6 +156,27 @@ class MemoryMap:
         else:
             value = raw
         return value if point.scale is None else value * point.scale
+
+    def _to_raw(self, point: MemoryMapPoint, value: int | float | str) -> int:
+        point_type = point.point_type
+        width = point.bits[1] - point.bits[0] + 1 if point.bits else point_type.width
+        if isinstance(value, str):
+            raw = int(value, 16)
+            if not 0 <= raw < 1 << width:
+                raise ValueError(f"{point.name}: {value} 는 {width}비트를 넘는다")
+            return raw
+        if point_type in (PointType.F32, PointType.F64):
+            scaled = value if point.scale is None else value / point.scale
+            return int.from_bytes(struct.pack(">" + point_type.struct_format, scaled), "big")
+        if point.scale is not None:
+            value = round(value / point.scale)
+        elif isinstance(value, float) and not value.is_integer():
+            raise ValueError(f"{point.name}: {point_type.value} 에 소수 {value} 는 쓸 수 없다")
+        value = int(value)
+        low = -(1 << (width - 1)) if point_type in _SIGNED_TYPES else 0
+        if not low <= value < low + (1 << width):
+            raise ValueError(f"{point.name}: {value} 는 {point_type.value} 범위({low}~{low + (1 << width) - 1}) 밖")
+        return value & ((1 << width) - 1)
 
 
 def _sample(kind: RegisterKind, point: MemoryMapPoint, value: Value | None = None, error: str | None = None) -> Sample:

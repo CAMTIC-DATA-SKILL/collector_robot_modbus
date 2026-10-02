@@ -76,6 +76,9 @@ python script/smoke_modbus_tcp.py --host 192.168.0.10 --kind holding --address 0
 
 # 실장비: 쓰기 → 다시 읽기 → 원래 값 복원까지 점검
 python script/smoke_modbus_tcp.py --host 192.168.0.10 --kind holding --address 100 --write
+
+# 실장비: 지정 값을 쓰고 복원하지 않고 유지 (f32 = 레지스터 2개)
+python script/smoke_modbus_tcp.py --host 192.168.0.10 --address 100 --type f32 --write --value 1.5 --keep
 ```
 
 ### Modbus RTU
@@ -89,6 +92,9 @@ python script/smoke_modbus_rtu.py --port /dev/ttyUSB0 --baudrate 9600 --parity N
 
 # 실장비: coil 쓰기/복원 점검
 python script/smoke_modbus_rtu.py --port /dev/ttyUSB0 --kind coil --address 0 --write
+
+# 실장비: 레지스터 100 의 상위 8비트에 0x12 를 쓰고 유지 (하위 8비트는 보존)
+python script/smoke_modbus_rtu.py --port /dev/ttyUSB0 --address 100.H --type u8 --write --value 0x12 --keep
 ```
 
 시리얼 포트 권한이 없으면 `sudo usermod -aG dialout $USER` 후 재로그인한다.
@@ -98,9 +104,13 @@ python script/smoke_modbus_rtu.py --port /dev/ttyUSB0 --kind coil --address 0 --
 | 옵션 | 설명 |
 | --- | --- |
 | `--kind` | `coil` / `discrete` / `holding`(기본) / `input` |
-| `--address` | 시작 번지. 0-based 오프셋이다 (40001 → 0) |
-| `--count` | 읽을 개수 (기본 1) |
-| `--write` | 실장비 모드에서 `--address` 한 곳에 값을 바꿔 쓰고 확인한 뒤 원래 값으로 복원. `holding`, `coil` 만 가능 |
+| `--address` | 시작 번지. 0-based 오프셋이다 (40001 → 0). `holding` 은 메모리 맵 `addr` 처럼 `100.5`, `100.8~F`, `100.H` 비트 구간도 가능 |
+| `--count` | 읽을 개수 (기본: `holding` 은 `--type` 이 차지하는 레지스터 수, 그 외 1) |
+| `--write` | 실장비 모드에서 `--address` 에 값을 써 보고 다시 읽어 확인한 뒤 원래 값으로 복원. `holding`, `coil` 만 가능. `--value` 가 없으면 최하위 비트만 뒤집어 쓴다 |
+| `--value` | `--write` 로 쓸 값. 배열/여러 coil 은 쉼표로 구분 (`1,0,1`), `0x..` 는 원시 비트, 음수는 `--value=-1` 처럼 `=` 로 붙인다 |
+| `--keep` | 복원하지 않고 쓴 값을 유지. `--write --value` 와 함께만 쓸 수 있고, 결과에 복원용 `--value` 가 출력된다 |
+| `--type` | `holding` 값 타입. 메모리 맵 `type` 과 같다 (`u16` 기본, `u8` `i8` `bit` 는 비트 구간, `u32` `i32` `f32` `u64` `i64` `f64`, `i16[3]` 배열) |
+| `--word-endian` | 2레지스터 이상 값의 순서. `le`(기본) / `be`. 메모리 맵 `word_endian` 과 같다 |
 | `--device-id` | Modbus unit id (slave id) |
 | `--timeout`, `--retries` | 요청 타임아웃(초) / 재시도 횟수 |
 | `-v`, `--verbose` | pymodbus 디버그 로그(송수신 프레임) 출력 |
@@ -114,13 +124,16 @@ TCP 전용: `--host`, `--port` / RTU 전용: `--port`, `--baudrate`, `--parity`(
 ### Modbus 점검 항목
 
 - **시뮬레이터 모드**: 연결, 4종 읽기(coil/discrete/holding/input), 4종 쓰기 후 되읽기 비교,
+  메모리 맵 타입별(8/16/32비트, 비트 구간, 배열, hex) 인코딩 → 쓰기 → 디코딩 왕복, 타입 지정 쓰기의 복원/유지,
   범위 밖 읽기/쓰기가 `ADDR_OUT_OF_RANGE`(E-2203)로 매핑되는지, 끊었다 다시 연결 후 읽기,
   연결 불가 대상이 `CONNECT_FAILED`(E-1001, 재연결 대상)로 매핑되는지.
   시뮬레이터 초기값은 coil=False, discrete=True, holding=5, input=7 이고 레지스터 0~99 번지를 가진다.
-- **실장비 모드**: 연결, 지정 영역 읽기, (`--write` 시) 쓰기/되읽기/복원, 재연결 후 읽기.
+- **실장비 모드**: 연결, 지정 영역 읽기, (`--write` 시) 쓰기/되읽기/복원(`--keep` 이면 유지), 재연결 후 읽기.
 
 > `--write` 는 실제 로봇 레지스터 값을 잠시 바꾼다. 복원은 `finally` 로 보장하지만
 > 명령/트리거용 레지스터에는 쓰지 말고, 영향이 없는 번지로만 사용한다.
+> `--keep` 은 복원하지 않으므로 값이 그대로 남는다. 되읽기가 실패해도 복원하지 않는다.
+> 비트 구간 쓰기는 레지스터를 읽고 해당 비트만 바꿔 다시 쓰므로, 그 사이 장비가 같은 레지스터를 바꾸면 덮어쓸 수 있다.
 
 ### ROS 2
 
@@ -179,7 +192,7 @@ python -m core.ros2_client --topic /chatter --type std_msgs/msg/String
 
 | 키 | 설명 |
 | --- | --- |
-| `addr` | 0-based 레지스터 번호. `100.5` 는 비트 하나, `100.8~F` 는 비트 구간 (0 = LSB, 10~15 는 A~F) |
+| `addr` | 0-based 레지스터 번호. `100.5` 는 비트 하나, `100.8~F` 는 비트 구간 (0 = LSB, 10~15 는 A~F). `100.L` / `100.H` 는 하위 / 상위 바이트로 `100.0~7` / `100.8~F` 와 같고 섞어 써도 된다 |
 | `type` | `u16` `i16` `u32` `i32` `u64` `i64` `f32` `f64` 는 레지스터 단위, `u8` `i8` `bit` 는 비트 구간으로 지정. `i16[6]` 처럼 배열 가능 |
 | `scale` | 디코딩 값에 곱할 배율 |
 | `format` | `dec`(기본) / `hex`. 최상위에 두면 전체 기본값, 포인트에 두면 그 포인트만. hex 는 scale 을 적용하지 않은 원시 비트를 `"0xFF38"` 처럼 낸다 |

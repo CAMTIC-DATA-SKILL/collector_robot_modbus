@@ -1,6 +1,7 @@
 """메모리 맵 JSON 스키마와 읽기 요청(Modbus FC03/FC04 프레임 단위) 모델.
 
 - addr: 0-based 레지스터 번호. "100.5" 는 비트 하나, "100.8~F" 는 비트 구간 (0 = LSB, 10~15 는 A~F).
+  "100.L" / "100.H" 는 하위 / 상위 바이트로 "100.0~7" / "100.8~F" 와 같다.
 - type: u8 i8 bit 는 비트 구간으로만, u16 ~ f64 는 레지스터 단위로 지정한다.
   레지스터 단위 타입은 "i16[6]" 처럼 연속 배열로 쓸 수 있다.
 """
@@ -13,7 +14,8 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator,
 MAX_READ_REGISTERS = 125
 MAX_REGISTER = 0xFFFF
 
-_ADDR_RE = re.compile(r"^(\d+)(?:\.([0-9A-F])(?:~([0-9A-F]))?)?$", re.IGNORECASE)
+_ADDR_RE = re.compile(r"^(\d+)(?:\.(?:([0-9A-F])(?:~([0-9A-F]))?|([LH])))?$", re.IGNORECASE)
+_BYTE_BITS = {"L": (0, 7), "H": (8, 15)}
 _TYPE_RE = re.compile(r"^([a-z]+\d*)(?:\[(\d+)\])?$")
 
 
@@ -99,7 +101,7 @@ class MemoryMapPoint(BaseModel):
         m_addr = _ADDR_RE.match(self.addr)
         m_type = _TYPE_RE.match(self.type.lower())
         if not m_addr:
-            raise ValueError(f"{self.name}: addr 형식 오류 {self.addr!r} (예: 100, 100.5, 100.8~F)")
+            raise ValueError(f"{self.name}: addr 형식 오류 {self.addr!r} (예: 100, 100.5, 100.8~F, 100.H)")
         if not m_type or m_type.group(1) not in PointType._value2member_map_:
             raise ValueError(f"{self.name}: 알 수 없는 type {self.type!r} (가능: {', '.join(t.value for t in PointType)})")
 
@@ -107,14 +109,17 @@ class MemoryMapPoint(BaseModel):
         point_type = PointType(m_type.group(1))
         length = int(m_type.group(2) or 1)
         bits = None
-        if m_addr.group(2) is not None:
-            lo = int(m_addr.group(2), 16)
-            hi = int(m_addr.group(3), 16) if m_addr.group(3) is not None else lo
+        if m_addr.group(2) is not None or m_addr.group(4) is not None:
+            if m_addr.group(4) is not None:
+                lo, hi = _BYTE_BITS[m_addr.group(4).upper()]
+            else:
+                lo = int(m_addr.group(2), 16)
+                hi = int(m_addr.group(3), 16) if m_addr.group(3) is not None else lo
             if hi < lo or hi - lo + 1 != point_type.width or point_type.struct_format or length != 1:
                 raise ValueError(f"{self.name}: 비트 구간 {self.addr!r} 은 bit(1비트) / u8·i8(8비트) 단일 값에만 쓴다")
             bits = (lo, hi)
         elif not point_type.struct_format:
-            raise ValueError(f"{self.name}: {point_type.value} 은 비트 구간으로 지정한다 (예: {register}.8~F)")
+            raise ValueError(f"{self.name}: {point_type.value} 은 비트 구간으로 지정한다 (예: {register}.8~F, {register}.H)")
         if length < 1:
             raise ValueError(f"{self.name}: 배열 길이는 1 이상: {self.type!r}")
 

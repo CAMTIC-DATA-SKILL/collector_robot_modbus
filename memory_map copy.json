@@ -1,0 +1,15 @@
+{
+  "word_endian": "le",
+  "max_gap": 8,
+  "format": "dec",
+  "holding": [
+    {"addr": "24079.8~F", "type": "u8", "name": "axis_command"},
+    {"addr": "24080", "type": "f32", "name": "axis_1 (S)"},
+    {"addr": "24082", "type": "f32", "name": "axis_2 (H)"},
+    {"addr": "24084", "type": "f32", "name": "axis_3 (V)"},
+    {"addr": "24086", "type": "f32", "name": "axis_4 (R2)"},
+    {"addr": "24088", "type": "f32", "name": "axis_5 (B)"},
+    {"addr": "24090", "type": "f32", "name": "axis_6 (R1)"},
+    {"addr": "24092", "type": "f32", "name": "axis_7 (blank)"}
+  ]
+}
