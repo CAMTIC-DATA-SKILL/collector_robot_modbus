@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from dotenv import load_dotenv
 
 from core.modbus_client.config import ModbusRtuConfig, ModbusTcpConfig
+from core.zeromq_client.config import ZmqConfig
 
 if TYPE_CHECKING:
     from core.ros2_client.config import RosClientConfig
@@ -44,6 +45,10 @@ def _env_path(key: str, default: str) -> Path:
 @dataclass(slots=True)
 class Settings:
     log_level: str
+    # 프로토콜 collector_address / device_key, ZeroMQ 토픽 collector.robot.{device_key}.* 세그먼트
+    device_key: str
+    # data / health 헤더의 gateway_address. ack 는 요청 헤더 값을 에코한다
+    gateway_address: str
     # tcp | rtu
     modbus_mode: str
     memory_map_file: Path
@@ -51,6 +56,7 @@ class Settings:
     reconnect_interval: float
     modbus_tcp: ModbusTcpConfig
     modbus_rtu: ModbusRtuConfig
+    zmq: ZmqConfig
     # 표시용. rcl 은 이 값을 환경 변수에서 직접 읽는다
     ros_domain_id: str
 
@@ -59,9 +65,14 @@ def load_settings() -> Settings:
     modbus_mode = _env_str("MODBUS_MODE", "tcp").lower()
     if modbus_mode not in ("tcp", "rtu"):
         raise ValueError(f"MODBUS_MODE 는 tcp 또는 rtu: {modbus_mode!r}")
-    tcp, rtu = ModbusTcpConfig(), ModbusRtuConfig()
+    device_key = _env_str("DEVICE_KEY", "robot-1")
+    if "." in device_key:
+        raise ValueError(f"DEVICE_KEY 에 '.' 는 쓸 수 없다 (토픽 계층 구분자): {device_key!r}")
+    tcp, rtu, zmq = ModbusTcpConfig(), ModbusRtuConfig(), ZmqConfig()
     return Settings(
         log_level=_env_str("LOG_LEVEL", "INFO").upper(),
+        device_key=device_key,
+        gateway_address=_env_str("GATEWAY_ADDRESS", "gateway"),
         modbus_mode=modbus_mode,
         memory_map_file=_env_path("MEMORY_MAP_FILE", "memory_map.json"),
         poll_interval=_env_float("POLL_INTERVAL_SEC", 1.0),
@@ -83,6 +94,14 @@ def load_settings() -> Settings:
             parity=_env_str("MODBUS_RTU_PARITY", rtu.parity).upper(),
             stopbits=_env_int("MODBUS_RTU_STOPBITS", rtu.stopbits),
             handle_local_echo=_env_bool("MODBUS_RTU_LOCAL_ECHO", rtu.handle_local_echo),
+        ),
+        zmq=ZmqConfig(
+            pub_endpoint=_env_str("ZMQ_PUB_ENDPOINT", zmq.pub_endpoint),
+            sub_endpoint=_env_str("ZMQ_SUB_ENDPOINT", zmq.sub_endpoint),
+            pub_bind=_env_bool("ZMQ_PUB_BIND", zmq.pub_bind),
+            sub_bind=_env_bool("ZMQ_SUB_BIND", zmq.sub_bind),
+            recv_timeout_ms=_env_int("ZMQ_RECV_TIMEOUT_MS", zmq.recv_timeout_ms),
+            linger_ms=_env_int("ZMQ_LINGER_MS", zmq.linger_ms),
         ),
         ros_domain_id=_env_str("ROS_DOMAIN_ID", "0"),
     )

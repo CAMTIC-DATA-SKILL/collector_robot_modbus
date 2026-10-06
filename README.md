@@ -1,16 +1,27 @@
 # collector_robot_modbus
 로봇 데이터 수집을 전담하는 컬렉터 레포지토리로 modbus로 구축함을 전제로 한다
 
+## 아키텍처
+
+```
+로봇 Controller ──Modbus(TCP/RTU)──▶ collector_robot_modbus ──IPC(ZeroMQ)──▶ 게이트웨이 프로세스 ──▶ 상위 아키텍처
+```
+
+- **남향**: 로봇 Controller 와 Modbus(TCP/RTU)로 연동해 데이터 수집 및 제어 통신을 수행한다.
+- **이 레포의 범위**: 수집(메모리 맵 기반 주기 읽기·디코딩)과 수집 데이터를 IPC 로 넘기는 데까지.
+- **북향**: 상위 아키텍처로의 전송은 이 레포가 담당하지 않는다. IPC 로 연계된 별도 프로세스가 전달한다.
+
 ## 구성
 
 ```
-main.py                  # 진입점: Modbus 연결 → 메모리 맵 JSON 의 포인트를 주기적으로 읽기
+main.py                  # 진입점: Modbus 주기 읽기 → ZeroMQ data/health PUB, 게이트웨이 cmd SUB
 config.py                # .env 로딩. 환경 변수는 모두 여기서만 읽는다
 memory_map.example.json  # 메모리 맵 예시 (memory_map.json 으로 복사해서 사용)
 core/
 ├── modbus_client/       # Modbus 클라이언트 (BaseModbusClient ← ModbusTcpClient / ModbusRtuClient), 메모리 맵 읽기
+├── zeromq_client/       # 게이트웨이 IPC (PUB + SUB 파사드 ZeroMqClient, 토픽 조립)
 └── ros2_client/         # ROS 2(rclpy) 클라이언트
-model/                   # pydantic 모델 (메모리 맵 스키마, 읽기 요청, 읽기 결과)
+model/                   # pydantic 모델 (메모리 맵 스키마, 읽기 요청, 읽기 결과, IPC 프로토콜)
 script/                  # 스모크 테스트
 ```
 
@@ -33,7 +44,8 @@ python main.py
 ```
 
 `.env` 의 `MODBUS_MODE`(tcp/rtu) 접속 정보로 연결하고, `MEMORY_MAP_FILE` 의 포인트를
-`POLL_INTERVAL_SEC` 마다 읽어 로그로 출력한다. 연결이 끊기면 `RECONNECT_INTERVAL_SEC` 후 다시 연결한다.
+`POLL_INTERVAL_SEC` 마다 읽어 로그로 출력하고 ZeroMQ 로 게이트웨이에 보낸다.
+연결이 끊기면 `RECONNECT_INTERVAL_SEC` 후 다시 연결한다.
 시작 시 실제로 나갈 읽기 요청(묶인 범위)을 먼저 출력한다.
 
 ```
@@ -41,6 +53,34 @@ INFO collector: memory map memory_map.json, read plan:
 holding 0~13 (14 regs): status_code, sensor_mode, temperature, ...
 INFO collector: {"status_code": 1, "sensor_mode": 2, "temperature": 25.8, ...}
 WARNING collector: read errors: {'battery_voltage': 'E-2203'}
+```
+
+## 게이트웨이 IPC (ZeroMQ)
+
+collector-plc 와 같은 방식이다. 소켓은 PUB + SUB 두 개이고 프레임은 multipart `[topic, ProtocolHeaderDTO JSON]` 이다.
+
+| 방향 | 소켓 | 토픽 | msg_type |
+| --- | --- | --- | --- |
+| collector → gateway | PUB (`ZMQ_PUB_ENDPOINT`, bind) | `collector.robot.{DEVICE_KEY}.{msg_type}` | `data` / `health` / `ack` |
+| gateway → collector | SUB (`ZMQ_SUB_ENDPOINT`, connect) | `middleware.gateway.cmd_` prefix | `cmd_r` / `cmd_w` |
+
+- `data`: 매 주기 읽기 결과. `samples[]` 는 `Sample` 과 같은 필드(`name` `kind` `addr` `type` `value` `error`)이고 실패 포인트는 `value=null`, `error` 에 코드가 남는다.
+- `health`: Modbus 연결 상태가 바뀔 때 (`device_ok`, 실패 시 `reason` 에 `E-1001` 등). 연결 실패 중에는 재시도마다 낸다.
+- `ack`: cmd 처리 결과. cmd 는 아직 처리하지 않으므로 `status=rejected`, `code=E-4102`(CMD_UNSUPPORTED_ACTION) 로 응답한다.
+  cmd 는 모든 collector 에 같은 토픽으로 오므로 헤더 `collector_address` 가 `DEVICE_KEY` 와 다르면 무시한다.
+
+collector 마다 PUB 을 bind 하므로 같은 edge 에 collector 가 여럿이면 `ZMQ_PUB_ENDPOINT` 포트가 겹치면 안 되고
+(기본 5557, collector-plc 는 5556), 게이트웨이는 collector 별 PUB 엔드포인트에 각각 connect 한다.
+게이트웨이 PUB(cmd) 은 하나를 bind 하고 모든 collector 가 connect 한다 (기본 5555).
+
+게이트웨이 없이 확인할 때는 게이트웨이 역할을 하는 CLI 로 PUB 메시지를 본다.
+
+```bash
+# collector.robot.* 수신 출력
+python -m core.zeromq_client
+
+# cmd_r 을 한 번 보내고 ack 까지 확인 (ZMQ_SUB_ENDPOINT 에 bind 하므로 실제 게이트웨이와 같이 띄우지 않는다)
+python -m core.zeromq_client --device-key robot-1 --cmd cmd_r --action SET_SCAN
 ```
 
 환경 변수 목록과 기본값은 `.env.example` 참고. 코드에서는 `from config import settings` 로만 참조한다.

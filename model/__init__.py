@@ -8,13 +8,35 @@ from .memory_map_model import (
     ValueFormat,
     WordEndian,
 )
+from .protocol_model import (
+    AckCode,
+    MsgAckDTO,
+    MsgAckStatusEnum,
+    MsgCmdREnum,
+    MsgCmdWEnum,
+    MsgDataDTO,
+    MsgHealthDTO,
+    MsgSampleDTO,
+    MsgTypeEnum,
+    ProtocolHeaderDTO,
+)
 from .sample_model import Sample, Value
 
 __all__ = [
     "MAX_READ_REGISTERS",
+    "AckCode",
     "MemoryMapPoint",
     "MemoryMapSettings",
+    "MsgAckDTO",
+    "MsgAckStatusEnum",
+    "MsgCmdREnum",
+    "MsgCmdWEnum",
+    "MsgDataDTO",
+    "MsgHealthDTO",
+    "MsgSampleDTO",
+    "MsgTypeEnum",
     "PointType",
+    "ProtocolHeaderDTO",
     "ReadRequest",
     "RegisterKind",
     "Sample",
