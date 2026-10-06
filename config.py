@@ -6,15 +6,11 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 
 from core.modbus_client.config import ModbusRtuConfig, ModbusTcpConfig
 from core.zeromq_client.config import ZmqConfig
-
-if TYPE_CHECKING:
-    from core.ros2_client.config import RosClientConfig
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
@@ -57,8 +53,6 @@ class Settings:
     modbus_tcp: ModbusTcpConfig
     modbus_rtu: ModbusRtuConfig
     zmq: ZmqConfig
-    # 표시용. rcl 은 이 값을 환경 변수에서 직접 읽는다
-    ros_domain_id: str
 
 
 def load_settings() -> Settings:
@@ -103,23 +97,6 @@ def load_settings() -> Settings:
             recv_timeout_ms=_env_int("ZMQ_RECV_TIMEOUT_MS", zmq.recv_timeout_ms),
             linger_ms=_env_int("ZMQ_LINGER_MS", zmq.linger_ms),
         ),
-        ros_domain_id=_env_str("ROS_DOMAIN_ID", "0"),
-    )
-
-
-def ros_client_config() -> "RosClientConfig":
-    # core.ros2_client 는 import 시 rclpy 를 불러오므로 ROS 환경에서 필요할 때만 만든다
-    from core.ros2_client.config import RosClientConfig
-
-    defaults = RosClientConfig()
-    num_threads = _env_str("ROS_CLIENT_NUM_THREADS", "")
-    return RosClientConfig(
-        node_name=_env_str("ROS_CLIENT_NODE_NAME", defaults.node_name),
-        namespace=_env_str("ROS_CLIENT_NAMESPACE", defaults.namespace),
-        qos_depth=_env_int("ROS_CLIENT_QOS_DEPTH", defaults.qos_depth),
-        num_threads=int(num_threads) if num_threads else defaults.num_threads,
-        service_timeout=_env_float("ROS_CLIENT_SERVICE_TIMEOUT", defaults.service_timeout),
-        shutdown_timeout=_env_float("ROS_CLIENT_SHUTDOWN_TIMEOUT", defaults.shutdown_timeout),
     )
 
 

@@ -19,15 +19,14 @@ config.py                # .env 로딩. 환경 변수는 모두 여기서만 읽
 memory_map.example.json  # 메모리 맵 예시 (memory_map.json 으로 복사해서 사용)
 core/
 ├── modbus_client/       # Modbus 클라이언트 (BaseModbusClient ← ModbusTcpClient / ModbusRtuClient), 메모리 맵 읽기
-├── zeromq_client/       # 게이트웨이 IPC (PUB + SUB 파사드 ZeroMqClient, 토픽 조립)
-└── ros2_client/         # ROS 2(rclpy) 클라이언트
+└── zeromq_client/       # 게이트웨이 IPC (PUB + SUB 파사드 ZeroMqClient, 토픽 조립)
 model/                   # pydantic 모델 (메모리 맵 스키마, 읽기 요청, 읽기 결과, IPC 프로토콜)
 script/                  # 스모크 테스트
 ```
 
 ## 환경 준비
 
-ROS 2 Humble 과 Python 3.10 기준이다. rclpy 등 ROS 파이썬 패키지는 apt(`ros-humble-*`)로 설치되어 있어야 한다.
+Python 3.10 이상 기준이다.
 
 ```bash
 python3.10 -m venv .venv
@@ -85,13 +84,6 @@ python -m core.zeromq_client --device-key robot-1 --cmd cmd_r --action SET_SCAN
 
 환경 변수 목록과 기본값은 `.env.example` 참고. 코드에서는 `from config import settings` 로만 참조한다.
 
-ROS 2 스모크 테스트를 돌릴 때는 venv 활성화 전에 ROS 환경을 먼저 불러온다.
-
-```bash
-source /opt/ros/humble/setup.bash
-source .venv/bin/activate
-```
-
 ## 스모크 테스트
 
 모든 명령은 저장소 루트에서 실행한다. 각 점검은 `[PASS]` / `[FAIL]` 로 출력되고
@@ -103,7 +95,6 @@ source .venv/bin/activate
 | --- | --- | --- |
 | `script/smoke_modbus_tcp.py` | `ModbusTcpClient` | `--host` 생략 시 내장 시뮬레이터 |
 | `script/smoke_modbus_rtu.py` | `ModbusRtuClient` | `--port` 생략 시 가상 시리얼(pty) + 시뮬레이터 |
-| `script/smoke_ros2_client.py` | `RosClient` | 자기 자신과 통신 (외부 노드 불필요) |
 
 ### Modbus TCP
 
@@ -174,41 +165,6 @@ TCP 전용: `--host`, `--port` / RTU 전용: `--port`, `--baudrate`, `--parity`(
 > 명령/트리거용 레지스터에는 쓰지 말고, 영향이 없는 번지로만 사용한다.
 > `--keep` 은 복원하지 않으므로 값이 그대로 남는다. 되읽기가 실패해도 복원하지 않는다.
 > 비트 구간 쓰기는 레지스터를 읽고 해당 비트만 바꿔 다시 쓰므로, 그 사이 장비가 같은 레지스터를 바꾸면 덮어쓸 수 있다.
-
-### ROS 2
-
-```bash
-source /opt/ros/humble/setup.bash
-source .venv/bin/activate
-
-# 자기 자신과 통신하며 기본 기능 점검
-python script/smoke_ros2_client.py
-
-# 외부 토픽에서 메시지 1건 수신까지 확인
-python script/smoke_ros2_client.py --topic /joint_states --type sensor_msgs/msg/JointState --sensor-qos
-```
-
-| 옵션 | 설명 |
-| --- | --- |
-| `--topic`, `--type` | 외부 토픽 수신 점검 (함께 지정) |
-| `--sensor-qos` | `--topic` 구독에 `qos_profile_sensor_data`(best effort) 사용 |
-| `--timeout` | 메시지/서비스 대기 시간(초, 기본 5) |
-| `--node-name` | 노드 이름 (기본 `collector_smoke_<pid>`) |
-
-도메인은 `.env` 의 `ROS_DOMAIN_ID` 를 따른다. 로봇과 같은 도메인에서 외부 토픽을 점검해야 한다.
-
-점검 항목: 노드 시작, 자기 토픽 publish/subscribe 루프백, 중복 구독(`RosClientError`),
-타입 충돌·미존재 타입(`RosMessageTypeError`), 구독 해제, `std_srvs/srv/Trigger` 서비스 호출,
-구독 콜백 안에서 서비스 호출 시 교착이 없는지, 없는 서비스 호출(`RosTimeoutError`),
-노드 종료 후 호출(`RosConnectionError`), (옵션) 외부 토픽 수신.
-
-### ROS 2 토픽 확인용 CLI
-
-통과/실패 판정 없이 토픽 메시지만 계속 보고 싶을 때 쓴다.
-
-```bash
-python -m core.ros2_client --topic /chatter --type std_msgs/msg/String
-```
 
 ## 메모리 맵 (8bit/16bit/32bit 혼합 레지스터)
 
