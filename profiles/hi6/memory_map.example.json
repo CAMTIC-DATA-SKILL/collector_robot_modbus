@@ -1,0 +1,11 @@
+{
+  "word_endian": "le",
+  "max_gap": 8,
+  "format": "dec",
+  "s_relay_base": 24000,
+  "holding": [],
+  "sockets": [
+    {"name": "axis_1_3", "s_block": 2000, "command": "GET_AXIS_INFO", "params": [1, 1]},
+    {"name": "axis_4_6", "s_block": 2020, "command": "GET_AXIS_INFO", "params": [1, 4]}
+  ]
+}

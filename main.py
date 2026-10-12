@@ -15,7 +15,14 @@ from uuid import uuid4
 from pydantic import BaseModel
 
 from config import settings
-from core.modbus_client import BaseModbusClient, MemoryMap, ModbusClientError, ModbusRtuClient, ModbusTcpClient
+from core.modbus_client import (
+    BaseModbusClient,
+    MemoryMap,
+    ModbusClientError,
+    ModbusRtuClient,
+    ModbusTcpClient,
+    load_catalog,
+)
 from core.zeromq_client import ZeroMqClient, ZmqClientError
 from model import (
     AckCode,
@@ -45,12 +52,21 @@ def build_client() -> BaseModbusClient:
 
 
 def load_memory_map() -> MemoryMap:
-    path = settings.memory_map_file
-    if not path.is_file():
+    missing = [str(p) for p in settings.memory_map_files if not p.is_file()]
+    if missing:
         raise FileNotFoundError(
-            f"메모리 맵 파일이 없습니다: {path} (memory_map.example.json 을 복사하거나 MEMORY_MAP_FILE 을 확인하세요)"
+            f"메모리 맵 파일이 없습니다: {', '.join(missing)} "
+            "(memory_map.example.json 을 복사하거나 MEMORY_MAP_FILE 을 확인하세요)"
         )
-    return MemoryMap.from_json(path)
+    catalog = None
+    if settings.command_catalog_file is not None:
+        if not settings.command_catalog_file.is_file():
+            raise FileNotFoundError(
+                f"command 카탈로그 파일이 없습니다: {settings.command_catalog_file} "
+                "(docs/command_catalog.example.csv 를 참고하거나 COMMAND_CATALOG_FILE 을 확인하세요)"
+            )
+        catalog = load_catalog(settings.command_catalog_file)
+    return MemoryMap.from_json(*settings.memory_map_files, catalog=catalog)
 
 
 def report(samples: list[Sample]) -> None:
@@ -169,7 +185,11 @@ def main() -> None:
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
 
     memory_map = load_memory_map()
-    logger.info("memory map %s, read plan:\n%s", settings.memory_map_file.name, memory_map.describe_plan())
+    logger.info(
+        "memory map %s, read plan:\n%s",
+        ", ".join(p.name for p in settings.memory_map_files),
+        memory_map.describe_plan(),
+    )
 
     zmq = ZeroMqClient(settings.zmq)
     zmq.connect()

@@ -33,9 +33,26 @@ def _env_bool(key: str, default: bool) -> bool:
     return _env_str(key, str(default)).lower() in ("1", "true", "yes", "on")
 
 
-def _env_path(key: str, default: str) -> Path:
-    path = Path(_env_str(key, default))
+def _as_path(value: str) -> Path:
+    path = Path(value)
     return path if path.is_absolute() else BASE_DIR / path
+
+
+def _env_path(key: str, default: str) -> Path:
+    return _as_path(_env_str(key, default))
+
+
+def _env_paths(key: str, default: str) -> tuple[Path, ...]:
+    """쉼표로 여러 경로를 받는다. 첫 번째가 기준 파일이다."""
+    paths = tuple(_as_path(p) for p in (s.strip() for s in _env_str(key, default).split(",")) if p)
+    if not paths:
+        raise ValueError(f"{key} 에 경로가 없다")
+    return paths
+
+
+def _env_optional_path(key: str) -> Path | None:
+    value = _env_str(key, "")
+    return _as_path(value) if value else None
 
 
 @dataclass(slots=True)
@@ -47,7 +64,10 @@ class Settings:
     gateway_address: str
     # tcp | rtu
     modbus_mode: str
-    memory_map_file: Path
+    # 여러 개면 순서대로 합친다. 최상위 설정은 첫 번째(기준) 파일만 쓴다
+    memory_map_files: tuple[Path, ...]
+    # 소켓 command 카탈로그 CSV. 맵에 sockets 가 없으면 필요 없다
+    command_catalog_file: Path | None
     poll_interval: float
     reconnect_interval: float
     modbus_tcp: ModbusTcpConfig
@@ -68,7 +88,8 @@ def load_settings() -> Settings:
         device_key=device_key,
         gateway_address=_env_str("GATEWAY_ADDRESS", "gateway"),
         modbus_mode=modbus_mode,
-        memory_map_file=_env_path("MEMORY_MAP_FILE", "memory_map.json"),
+        memory_map_files=_env_paths("MEMORY_MAP_FILE", "memory_map.json"),
+        command_catalog_file=_env_optional_path("COMMAND_CATALOG_FILE"),
         poll_interval=_env_float("POLL_INTERVAL_SEC", 1.0),
         reconnect_interval=_env_float("RECONNECT_INTERVAL_SEC", 5.0),
         modbus_tcp=ModbusTcpConfig(

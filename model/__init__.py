@@ -1,10 +1,15 @@
+from .catalog_model import COMMAND_BLOCKS, CatalogPoint, CatalogType, CommandCatalog, CommandDef, SocketSetup
 from .memory_map_model import (
     MAX_READ_REGISTERS,
+    MAX_REGISTER,
+    SOCKET_BLOCKS,
+    SOCKET_REGISTERS,
     MemoryMapPoint,
     MemoryMapSettings,
     PointType,
     ReadRequest,
     RegisterKind,
+    SocketEntry,
     ValueFormat,
     WordEndian,
 )
@@ -23,8 +28,16 @@ from .protocol_model import (
 from .sample_model import Sample, Value
 
 __all__ = [
+    "COMMAND_BLOCKS",
     "MAX_READ_REGISTERS",
+    "MAX_REGISTER",
+    "SOCKET_BLOCKS",
+    "SOCKET_REGISTERS",
     "AckCode",
+    "CatalogPoint",
+    "CatalogType",
+    "CommandCatalog",
+    "CommandDef",
     "MemoryMapPoint",
     "MemoryMapSettings",
     "MsgAckDTO",
@@ -40,6 +53,8 @@ __all__ = [
     "ReadRequest",
     "RegisterKind",
     "Sample",
+    "SocketEntry",
+    "SocketSetup",
     "Value",
     "ValueFormat",
     "WordEndian",

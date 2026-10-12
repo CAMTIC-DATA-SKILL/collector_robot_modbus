@@ -17,10 +17,16 @@
 main.py                  # 진입점: Modbus 주기 읽기 → ZeroMQ data/health PUB, 게이트웨이 cmd SUB
 config.py                # .env 로딩. 환경 변수는 모두 여기서만 읽는다
 memory_map.example.json  # 메모리 맵 예시 (memory_map.json 으로 복사해서 사용)
+docs/
+└── command_catalog.example.csv  # 소켓 command 카탈로그 CSV 형식 예시 (HI6 카탈로그에서 형식별로 골라 둔 행)
+profiles/
+└── hi6/                 # 로봇 모델별 프로파일
+    ├── hi6_s_relay_command_catalog.csv  # HI6 S relay command 카탈로그 (매뉴얼 전사)
+    └── memory_map.example.json          # 이 카탈로그를 쓰는 메모리 맵 예시 (s_relay_base, sockets)
 core/
-├── modbus_client/       # Modbus 클라이언트 (BaseModbusClient ← ModbusTcpClient / ModbusRtuClient), 메모리 맵 읽기
+├── modbus_client/       # Modbus 클라이언트 (BaseModbusClient ← ModbusTcpClient / ModbusRtuClient), 메모리 맵 읽기, 소켓 block 코덱
 └── zeromq_client/       # 게이트웨이 IPC (PUB + SUB 파사드 ZeroMqClient, 토픽 조립)
-model/                   # pydantic 모델 (메모리 맵 스키마, 읽기 요청, 읽기 결과, IPC 프로토콜)
+model/                   # pydantic 모델 (메모리 맵 스키마, command 카탈로그, 읽기 요청/결과, IPC 프로토콜)
 script/                  # 스모크 테스트
 ```
 
@@ -95,6 +101,7 @@ python -m core.zeromq_client --device-key robot-1 --cmd cmd_r --action SET_SCAN
 | --- | --- | --- |
 | `script/smoke_modbus_tcp.py` | `ModbusTcpClient` | `--host` 생략 시 내장 시뮬레이터 |
 | `script/smoke_modbus_rtu.py` | `ModbusRtuClient` | `--port` 생략 시 가상 시리얼(pty) + 시뮬레이터 |
+| `script/smoke_socket_map.py` | command 카탈로그 / 메모리 맵 `sockets` | 항상 (장비 불필요, Windows 가능). 사용법은 [소켓](#소켓-command-를-쓰면-result-를-채워-주는-영역) 참고 |
 
 ### Modbus TCP
 
@@ -191,7 +198,7 @@ TCP 전용: `--host`, `--port` / RTU 전용: `--port`, `--baudrate`, `--parity`(
 | `addr` | 0-based 레지스터 번호. `100.5` 는 비트 하나, `100.8~F` 는 비트 구간 (0 = LSB, 10~15 는 A~F). `100.L` / `100.H` 는 하위 / 상위 바이트로 `100.0~7` / `100.8~F` 와 같고 섞어 써도 된다 |
 | `type` | `u16` `i16` `u32` `i32` `u64` `i64` `f32` `f64` 는 레지스터 단위, `u8` `i8` `bit` 는 비트 구간으로 지정. `i16[6]` 처럼 배열 가능 |
 | `scale` | 디코딩 값에 곱할 배율 |
-| `format` | `dec`(기본) / `hex`. 최상위에 두면 전체 기본값, 포인트에 두면 그 포인트만. hex 는 scale 을 적용하지 않은 원시 비트를 `"0xFF38"` 처럼 낸다 |
+| `format` | `dec`(기본) / `hex` / `bin`. 최상위에 두면 전체 기본값, 포인트에 두면 그 포인트만. hex / bin 은 scale 을 적용하지 않은 원시 비트를 `"0xFF38"` / `"0b00000101"` 처럼 낸다 |
 | `word_endian` | 2레지스터 이상 값의 순서. `le`(기본, 앞 레지스터가 하위 워드) / `be`. collector-plc 와 같은 의미 |
 | `max_gap` | 빈 번지가 이 개수 이하면 같은 요청으로 묶는다 (기본 8). 한 요청은 최대 125 레지스터 |
 
@@ -202,9 +209,189 @@ TCP 전용: `--host`, `--port` / RTU 전용: `--port`, `--baudrate`, `--parity`(
 from config import settings
 from core.modbus_client import MemoryMap, ModbusTcpClient
 
-memory_map = MemoryMap.from_json(settings.memory_map_file)
+memory_map = MemoryMap.from_json(*settings.memory_map_files)
 print(memory_map.describe_plan())       # 실제로 나갈 요청 (장비 없이 확인 가능)
 with ModbusTcpClient(settings.modbus_tcp) as client:
     samples = memory_map.read(client)   # [Sample(name="status_code", value=1, error=None, ...), ...]
     values = MemoryMap.values(samples)  # {"status_code": 1, "temperature": -20.0, ...} (실패 포인트 제외)
 ```
+
+## 소켓 (command 를 쓰면 result 를 채워 주는 영역)
+
+현대 HI6 컨트롤러의 S relay socket 은 번지에 command 와 parameter 를 써 두면 남은 자리를 result 로 채워 준다.
+
+### HI6 S relay 주소 규칙
+
+HI6 는 S relay 를 레지스터가 아니라 **block(8bit)** 단위로 번호를 매긴다. 2 block 이 Modbus 레지스터 1개(1 word)이고,
+S relay 영역은 Modbus holding **24000** 부터 시작한다.
+
+```
+Modbus 레지스터 = 24000 + S번호 // 2
+S번호가 짝수 -> 하위 바이트 (.L = bit 0~7)
+S번호가 홀수 -> 상위 바이트 (.H = bit 8~F)
+```
+
+| HI6 표기 | 메모리 맵 addr |
+| --- | --- |
+| `S0000` | `24000.L` (`24000.0~7`) |
+| `S0001` | `24000.H` (`24000.8~F`) |
+| `S2000` | `25000.L` |
+| `S2019` | `25009.H` |
+
+여러 block 값은 S 번호가 작은 block 이 하위 바이트인 little endian 이다. 2 레지스터 이상인 값이 레지스터 경계에
+맞으면 메모리 맵 `word_endian: "le"`(앞 레지스터가 하위 word)와 같은 값이 된다.
+
+### 소켓 한 자리
+
+S relay socket 은 **S2000** 부터 시작하고 한 자리가 **20 block = 10 레지스터** 다.
+`command` + `params` + `result` 가 모두 이 안에 들어가므로 **parameter 가 많아질수록 result 가 줄어든다**.
+
+```
+소켓 한 자리 = 20 block = 10 레지스터 (S2000~S2019 = holding 25000~25009)
+block  0  1 | 2  3  4  5 ...                                         19
+      command | parameter 와 result 가 카탈로그 offset 대로 놓인다
+       2 block | 값이 없는 칸은 0 으로 온다
+다음 소켓: S2020 (holding 25010), S2040 (holding 25020), ...
+```
+
+- command 는 HI6 에 정의된 데이터 고유 번호이고 block 0~1(레지스터 1개)을 쓴다.
+- parameter 와 result 의 위치·크기는 command 마다 다르고 **block 단위**다. 레지스터 경계에 맞지 않아도 된다.
+  예) `GET_TOOL_INFO` 는 1 block parameter 두 개(block 2, 3)가 레지스터 하나를 나눠 쓰고,
+  `GET_CUR_SPOTGUN_NO` 의 `master_cnd_no`(s2, block 5~6)는 두 레지스터에 걸친다.
+- parameter 와 result 가 섞여 있어도 된다. 예) `GETSET_TP_APP` 은 param(2, 4) → result(6) → param(8).
+- 수집기는 소켓 10 레지스터를 20 block 바이트열(레지스터마다 `[.L, .H]`)로 펼쳐 offset 대로 읽고 쓴다.
+
+layout 은 로봇 모델마다 정해져 있고 command 수가 많으므로 메모리 맵에 적지 않고 **command 카탈로그 CSV** 에서 가져온다.
+
+### 어디에 무엇을 적나
+
+| 적을 내용 | 파일 | 단위 |
+| --- | --- | --- |
+| command 번호, parameter 타입, result 항목 배치 | `profiles/<모델>/` 의 카탈로그 CSV (HI6: `hi6_s_relay_command_catalog.csv`) | 로봇 **모델**당 1개. 매뉴얼 전사이므로 git 에 커밋하고 현장마다 고치지 않는다 |
+| `word_endian`, `s_relay_base`, 고정 주소 포인트, 소켓 배치(어느 S block 에 어떤 command·parameter 값) | `memory_map.json` (원하면 `sockets` 만 `sockets.json` 으로 분리) | 설치한 로봇 **한 대**당 |
+| 위 파일 경로 | `.env` 의 `MEMORY_MAP_FILE`, `COMMAND_CATALOG_FILE` | 로봇 한 대당 |
+
+HI6 는 `profiles/hi6/` 의 예시에서 시작한다.
+
+```bash
+cp profiles/hi6/memory_map.example.json memory_map.json   # 소켓 배치와 parameter 값을 현장에 맞춘다
+# .env: COMMAND_CATALOG_FILE=profiles/hi6/hi6_s_relay_command_catalog.csv
+python script/smoke_socket_map.py --catalog profiles/hi6/hi6_s_relay_command_catalog.csv --map memory_map.json
+```
+
+예시는 손으로 옮겨 두었던 `holding 25000~25009`(command, params1_type, start_axis, 공란, axis_1~3)를
+`GET_AXIS_INFO`(120) 소켓으로 바꾼 것이다. 같은 command 를 `start_axis_no` 만 바꿔
+`S2000`(1~3축), `S2020`(4~6축) 두 소켓에 쓴다.
+
+| 파일 | 내용 | 범위 |
+| --- | --- | --- |
+| command 카탈로그 CSV (`COMMAND_CATALOG_FILE`) | command 별 parameter 와 result layout | 로봇 **모델** 공통. 매뉴얼 전사이므로 현장마다 고치지 않는다 |
+| 메모리 맵 `sockets` (`MEMORY_MAP_FILE`) | 어느 S block 에 어떤 command 를 어떤 parameter 로 쓸지 | 설치 **개체**별 |
+
+카탈로그 CSV 는 행 하나가 parameter 하나 또는 result 포인트 하나다. command 하나가 여러 행을 차지하므로
+`command` / `command_name` 은 행마다 반복해서 적는다 (`docs/command_catalog.example.csv` 참고).
+
+```csv
+command,command_name,section,offset,type,name,scale,format,unit,description
+120,GET_AXIS_INFO,param,2,s2,type,1,decimal,,"1=현재위치(축각도), ..."
+120,GET_AXIS_INFO,param,4,s2,start_axis_no,1,decimal,,시작 축 번호 (1~)
+120,GET_AXIS_INFO,data,8,f4,axis_0_value,1,decimal,,(시작축 + 0축) 해당값
+170,GET_HW_INFO,data,2,s2,cpu_temperature,0.1,decimal,,cpu 온도 * 10
+1010,GET_PROFIBUS_DP_STATUS,data,4,byte[16],status_or_slave_bitmap,1,binary,,Node/슬레이브 상태 bitmap
+```
+
+| 컬럼 | 설명 |
+| --- | --- |
+| `command` | command 정수. `0x..` 도 된다. 같은 `command_name` 의 행은 모두 같은 값이어야 한다. parameter 값에 따라 result 배치가 바뀌는 command 는 `command_name` 을 나눠 같은 번호를 쓴다 (예: `GET_CIFX_STATUS_1` ~ `_5` 가 모두 1000) |
+| `section` | `param` 또는 `data`(result). `param` 행 순서가 메모리 맵 `params` 값 순서다. `data` 행이 없으면 제어(SET) command 다 |
+| `offset` | 소켓 첫 block(command)을 0 으로 센 **block 위치**. 매뉴얼 표의 위치를 그대로 적는다. command 가 0~1 이므로 2 이상 |
+| `type` | HI6 매뉴얼 표기. 숫자는 **byte(block) 수**다: `s1` `s2` `s4` `s8`(부호 있음) `u1` `u2` `u4` `u8`(부호 없음) `f4` `f8`(실수) `byte`(원시 바이트). `byte[16]` 처럼 배열 가능 |
+| `scale` | 원시 값에 곱할 배율. 읽을 때 `원시 × scale`, parameter 로 쓸 때는 `값 ÷ scale` 을 반올림해 쓴다. 비우거나 `1` 이면 적용하지 않아 정수는 정수로 남는다. hex / bin 이면 적용하지 않는다 |
+| `format` | `dec` / `hex` / `bin`. 매뉴얼 표기 `decimal` / `hexadecimal` / `binary` 도 된다 |
+| `unit` `description` | 사람이 보는 값. 수집에는 쓰지 않는다 |
+
+메모리 맵 포인트의 `type` 은 bit 수(`u16`, `f32`)이고 카탈로그의 `type` 은 byte 수(`u2`, `f4`)다.
+같은 글자라도 뜻이 다르므로 카탈로그에 `u16` 을 적으면 거부한다.
+
+result 는 같은 자리를 다른 타입으로 보는 행이 있을 수 있어 겹쳐도 되지만, parameter 끼리 겹치면 서로 덮어쓰므로 거부한다.
+result 에 공란이 있어 `data` 가 남은 자리를 다 쓰지 않는 것은 정상이다.
+카탈로그 오류는 첫 번째에서 멈추지 않고 `파일:행` 과 함께 모두 모아 한 번에 알린다.
+
+메모리 맵에는 S relay 위치(`s_block`)와 command 이름, parameter 값만 적는다. `s_relay_base` 는 `S0000` 이 놓인
+Modbus 레지스터(HI6 는 24000)이고 `sockets` 를 쓰면 반드시 적는다.
+
+```json
+{
+  "word_endian": "le",
+  "s_relay_base": 24000,
+  "sockets": [
+    {"name": "axis_1_3", "s_block": 2000, "command": "GET_AXIS_INFO", "params": [1, 1]},
+    {"name": "axis_4_6", "s_block": 2020, "command": "GET_AXIS_INFO", "params": [1, 4]},
+    {"name": "tool",     "s_block": 2040, "command": "GET_TOOL_INFO", "params": [3, 2]},
+    {"name": "hw",       "s_block": 2060, "command": "GET_HW_INFO"}
+  ]
+}
+```
+
+`s_block` 은 매뉴얼 표기 `S2000` 의 숫자를 그대로 적는다. 짝수여야 하고 소켓끼리 20 이상 떨어져야 한다.
+result 값은 `{소켓 이름}.{포인트 이름}` 으로 펼쳐지므로 같은 command 를 여러 소켓에 써도 이름이 겹치지 않는다.
+`describe_plan()` 은 S 범위와 Modbus 범위, result 값마다 S 번호를 같이 보여 주므로 매뉴얼과 바로 대조할 수 있다.
+`setup` 은 command·parameter 자리를 덮는 레지스터 값이고, parameter 사이에 낀 result 자리는 0 으로 둔다.
+
+```
+socket axis_1_3 S2000~S2019 -> holding 25000~25009 GET_AXIS_INFO(=120): setup 25000~25002=[120, 1, 1], result: axis_1_3.axis_0_value(S2008 f4), axis_1_3.axis_1_value(S2012 f4), axis_1_3.axis_2_value(S2016 f4)
+socket tool S2040~S2059 -> holding 25020~25029 GET_TOOL_INFO(=174): setup 25020~25021=[174, 515], result: tool.tool_weight(S2044 f4), ...
+```
+
+`tool` 의 `515` 는 1 block parameter 두 개가 한 레지스터에 들어간 값이다 (`tool_no=3` 이 .L, `tool_data_type=2` 가 .H → `3 + 2×256`).
+
+시작 시 다음은 모두 거부한다.
+
+- `sockets` 가 있는데 `s_relay_base` 나 `COMMAND_CATALOG_FILE` 이 없음
+- 카탈로그에 없는 command, parameter 개수 불일치, parameter 값이 타입 범위 밖이거나 정수 타입에 소수
+- result 가 없는 제어(SET) command 를 수집 소켓에 배치
+- 홀수 `s_block`, 소켓끼리 번지 겹침, 소켓 이름 중복
+- 카탈로그에서 HI6 표기가 아닌 type, command 자리(block 0~1)를 쓰는 offset, 20 block 을 넘는 값,
+  parameter 끼리 겹침, 한 command 안의 name 중복
+
+읽기 전용 `holding` 포인트가 소켓 영역 안에 있으면 경고만 낸다.
+
+카탈로그와 맵은 장비 없이 검증할 수 있다 (Windows 에서도 실행된다).
+
+```bash
+# 내장 점검: block 코덱·주소 변환·펼치기·병합·거부 규칙 + profiles/*/ 카탈로그 로드 확인
+python script/smoke_socket_map.py
+
+# 배포 전 실제 파일 검증 + 펼친 계획 출력
+python script/smoke_socket_map.py --catalog profiles/hi6/hi6_s_relay_command_catalog.csv --map memory_map.json sockets.json
+```
+
+### 소켓 수집 동작
+
+`sockets` 에 적은 소켓은 `holding` 에 다시 적지 않아도 `read()` 가 같이 읽는다.
+쓰기(command·parameter)와 읽기(result)가 소켓 한 줄로 정해진다.
+
+1. 소켓 10 레지스터를 통째로 읽는다. 붙어 있는 소켓(S2000, S2020, ...)은 한 요청으로 묶는다.
+2. command·parameter 자리가 설정값과 같으면 result 를 디코딩해 `{소켓}.{포인트}` 샘플로 낸다.
+3. 다르면(재부팅으로 초기화 등) **command 를 먼저, parameter 를 나중에** 다시 쓰고 그 소켓의 이번 샘플은 `E-3101` 로 낸다.
+   로봇이 result 를 계속 갱신하므로 다음 읽기부터 값이 나온다.
+
+읽을 때마다 command·parameter 자리도 같이 읽으므로 따로 확인 주기를 두지 않는다 (확인 주기 = `POLL_INTERVAL_SEC`).
+소켓 샘플의 `addr` 는 레지스터 경계에 걸칠 수 있어 HI6 표기(`S2008`)로,
+`type` 은 메모리 맵 표기(`f4` → `f32`, `s2` → `i16`, `u1`·`byte` → `u8`)로 낸다.
+
+| 코드 | 의미 |
+| --- | --- |
+| `E-3101` | 소켓 command·parameter 가 설정과 달라 다시 썼다. result 는 다음 읽기부터 유효 |
+| `E-2002` | 소켓 다시 쓰기 실패 (장비가 쓰기를 거부) |
+
+### 맵 파일 나누기
+
+`MEMORY_MAP_FILE` 에 쉼표로 여러 경로를 주면 순서대로 합친다. 쓰기가 생기는 `sockets` 만 따로 리뷰할 때 쓴다.
+
+```bash
+MEMORY_MAP_FILE=memory_map.json,sockets.json
+```
+
+`holding` / `input` / `sockets` 는 이어 붙이고, `word_endian` / `max_gap` / `format` / `s_relay_base` 는 첫 번째(기준) 파일에만 둔다.
+뒤 파일에 있으면 어느 쪽이 이겼는지 추적할 수 없으므로 거부한다. 병합 후 검증은 한 번만 돌므로 파일을 나눠도 결과가 같다.

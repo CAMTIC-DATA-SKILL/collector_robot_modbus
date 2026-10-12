@@ -4,8 +4,13 @@
   "100.L" / "100.H" 는 하위 / 상위 바이트로 "100.0~7" / "100.8~F" 와 같다.
 - type: u8 i8 bit 는 비트 구간으로만, u16 ~ f64 는 레지스터 단위로 지정한다.
   레지스터 단위 타입은 "i16[6]" 처럼 연속 배열로 쓸 수 있다.
+- format: dec | hex | bin. hex / bin 은 scale 없이 원시 비트를 문자열로 낸다.
+- sockets: command 를 써 두면 남은 자리에 result 를 채워 주는 영역(HI6 S relay socket)의 배치.
+  위치는 S relay block 번호로 적고 s_relay_base 로 Modbus 레지스터를 구한다.
+  layout 은 적지 않고 command 카탈로그(model.catalog_model)에서 가져온다.
 """
 import re
+from collections import Counter
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
@@ -13,10 +18,16 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator,
 # FC03/FC04 한 요청에서 읽을 수 있는 최대 레지스터 수
 MAX_READ_REGISTERS = 125
 MAX_REGISTER = 0xFFFF
+# 소켓 한 자리의 크기. block 은 8bit 단위이고 2 block = 1 word = 레지스터 1개다.
+# command + params + result 가 모두 이 안에 들어간다
+SOCKET_BLOCKS = 20
+SOCKET_REGISTERS = SOCKET_BLOCKS // 2
 
 _ADDR_RE = re.compile(r"^(\d+)(?:\.(?:([0-9A-F])(?:~([0-9A-F]))?|([LH])))?$", re.IGNORECASE)
 _BYTE_BITS = {"L": (0, 7), "H": (8, 15)}
 _TYPE_RE = re.compile(r"^([a-z]+\d*)(?:\[(\d+)\])?$")
+# 생성되는 포인트 이름이 "{socket}.{point}" 이므로 구분자와 겹치는 문자는 막는다
+_SOCKET_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class RegisterKind(str, Enum):
@@ -32,8 +43,9 @@ class WordEndian(str, Enum):
 
 class ValueFormat(str, Enum):
     DEC = "dec"
-    # scale 을 적용하지 않은 원시 비트를 "0xFF38" 처럼 낸다
+    # hex / bin 은 scale 을 적용하지 않은 원시 비트를 "0xFF38" / "0b00000101" 처럼 낸다
     HEX = "hex"
+    BIN = "bin"
 
 
 class PointType(str, Enum):
@@ -155,6 +167,31 @@ class MemoryMapPoint(BaseModel):
         return self._register + self.register_count
 
 
+class SocketEntry(BaseModel):
+    """소켓 한 자리의 배치. command 이름과 parameter 값만 적고 layout 은 카탈로그에서 가져온다.
+
+    s_block 은 장비 매뉴얼의 S relay block 번호(S2000 -> 2000)다. Modbus 레지스터로는
+    s_relay_base + s_block // 2 이고, 그 자리 20 block 안에 command·parameter·result 가 카탈로그 offset 대로 놓인다.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str
+    s_block: int = Field(ge=0)
+    # 카탈로그의 command_name
+    command: str
+    # 카탈로그 parameter 순서대로의 값. hex 는 "0xFF" 처럼 문자열로 쓴다
+    params: tuple[int | float | str, ...] = ()
+
+    @model_validator(mode="after")
+    def _check(self) -> "SocketEntry":
+        if not _SOCKET_NAME_RE.match(self.name):
+            raise ValueError(f"소켓 이름은 영숫자/_/- 만 쓴다: {self.name!r}")
+        if self.s_block % 2:
+            raise ValueError(f"소켓 {self.name}: s_block 은 레지스터 경계인 짝수여야 한다 (S{self.s_block:04d})")
+        return self
+
+
 class MemoryMapSettings(BaseModel):
     """메모리 맵 JSON 최상위."""
 
@@ -164,15 +201,23 @@ class MemoryMapSettings(BaseModel):
     # 빈 번지가 이 개수 이하면 같은 요청으로 묶는다
     max_gap: int = Field(default=8, ge=0)
     format: ValueFormat = ValueFormat.DEC
+    # S relay S0000 이 놓인 Modbus holding 레지스터 (HI6: 24000). sockets 를 쓸 때 필요하다
+    s_relay_base: int | None = Field(default=None, ge=0, le=MAX_REGISTER)
     holding: list[MemoryMapPoint] = Field(default_factory=list)
     input: list[MemoryMapPoint] = Field(default_factory=list)
+    sockets: list[SocketEntry] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _unique_names(self) -> "MemoryMapSettings":
-        names = [p.name for p in self.holding + self.input]
-        duplicated = sorted({n for n in names if names.count(n) > 1})
-        if duplicated:
-            raise ValueError(f"name 중복: {duplicated}")
+    def _check(self) -> "MemoryMapSettings":
+        if self.sockets and self.s_relay_base is None:
+            raise ValueError("sockets 를 쓰려면 s_relay_base(S0000 의 Modbus 레지스터, HI6 는 24000)가 필요하다")
+        for label, names in (
+            ("name", [p.name for p in self.holding + self.input]),
+            ("소켓 name", [s.name for s in self.sockets]),
+        ):
+            duplicated = sorted({n for n, count in Counter(names).items() if count > 1})
+            if duplicated:
+                raise ValueError(f"{label} 중복: {duplicated}")
         return self
 
     def points_of(self, kind: RegisterKind) -> list[MemoryMapPoint]:

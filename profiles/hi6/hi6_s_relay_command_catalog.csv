@@ -1,0 +1,206 @@
+﻿command,command_name,section,offset,type,name,scale,format,unit,description
+100,GET_TASK_INFO,param,2,s2,task_no,1,decimal,,task_no (0~7)
+100,GET_TASK_INFO,data,4,s2,task_active,1,decimal,,task 활성화 상태
+100,GET_TASK_INFO,data,6,s2,task_program_no,1,decimal,,task 프로그램 번호
+100,GET_TASK_INFO,data,8,s2,task_step_no,1,decimal,,task 스텝 번호
+100,GET_TASK_INFO,data,10,s2,task_function_no,1,decimal,,task 펑션 번호
+100,GET_TASK_INFO,data,12,s2,task_main_program_no,1,decimal,,task 메인 프로그램 번호
+120,GET_AXIS_INFO,param,2,s2,type,1,decimal,,"1=현재위치(축각도), 2=현재위치(베이스좌표), 3=현재위치(베이스좌표/User좌표), 6=축속도, 7=모터속도, 8=부가축 속도제어시 모터속도(rpm) 지령값, 10=부하율(I/Ir), 11=부하율(I/Ip), 12=부하율(연속), 15=엔코더(온도), 18=축별누적거리"
+120,GET_AXIS_INFO,param,4,s2,start_axis_no,1,decimal,,시작 축 번호 (1~)
+120,GET_AXIS_INFO,data,8,f4,axis_0_value,1,decimal,,(시작축 + 0축) 해당값
+120,GET_AXIS_INFO,data,12,f4,axis_1_value,1,decimal,,(시작축 + 1축) 해당값
+120,GET_AXIS_INFO,data,16,f4,axis_2_value,1,decimal,,(시작축 + 2축) 해당값
+121,SET_AXIS_INFO,param,2,s2,type,1,decimal,rpm,8=부가축 속도제어시 모터속도 (rpm) 지령값
+121,SET_AXIS_INFO,param,4,s2,start_axis_no,1,decimal,,시작 축 번호 (1~)
+121,SET_AXIS_INFO,param,8,f4,axis_0_value,1,decimal,,(시작축 + 0축) 해당값
+121,SET_AXIS_INFO,param,12,f4,axis_1_value,1,decimal,,(시작축 + 1축) 해당값
+121,SET_AXIS_INFO,param,16,f4,axis_2_value,1,decimal,,(시작축 + 2축) 해당값
+122,GET_MECH_INFO,param,2,s2,type,1,decimal,,1 = 현재 메커니즘 번호
+122,GET_MECH_INFO,data,8,s2,current_mechanism_no,1,decimal,,현재 메커니즘 번호 (0~7)
+130,GET_TP_KEYPAD,data,3,u1,key_state_0,1,binary,,TP keypad key bit state; 문서상 byte/bit 매핑
+130,GET_TP_KEYPAD,data,4,u1,key_state_1,1,binary,,TP keypad key bit state; 문서상 byte/bit 매핑
+130,GET_TP_KEYPAD,data,5,u1,key_state_2,1,binary,,TP keypad key bit state; 문서상 byte/bit 매핑
+130,GET_TP_KEYPAD,data,6,u1,key_state_3,1,binary,,TP keypad key bit state; 문서상 byte/bit 매핑
+130,GET_TP_KEYPAD,data,7,u1,key_state_4,1,binary,,TP keypad key bit state; 문서상 byte/bit 매핑
+130,GET_TP_KEYPAD,data,8,u1,key_state_5,1,binary,,TP keypad key bit state; 문서상 byte/bit 매핑
+130,GET_TP_KEYPAD,data,9,u1,key_state_6,1,binary,,TP keypad key bit state; 문서상 byte/bit 매핑
+130,GET_TP_KEYPAD,data,10,u1,key_state_7,1,binary,,TP keypad key bit state; 문서상 byte/bit 매핑
+130,GET_TP_KEYPAD,data,11,u1,key_state_8,1,binary,,TP keypad key bit state; 문서상 byte/bit 매핑
+130,GET_TP_KEYPAD,data,12,u1,key_state_9,1,binary,,TP keypad key bit state; 문서상 byte/bit 매핑
+130,GET_TP_KEYPAD,data,13,u1,key_state_10,1,binary,,TP keypad key bit state; 문서상 byte/bit 매핑
+130,GET_TP_KEYPAD,data,14,u1,serial_no,1,decimal,,serial no.
+140,GETSET_TP_APP,param,2,s2,get_app_shortcut_no,1,decimal,,현재 TP app의 단축키 번호 (1~9)
+140,GETSET_TP_APP,param,4,s2,set_app_shortcut_no,1,decimal,,상태를 읽거나 제어할 대상 TP app의 단축키 번호 (1~9)
+140,GETSET_TP_APP,data,6,s2,app_state,1,decimal,,"대상 TP app 상태 현재값 (-1=없음, 0=미실행, 1=활성, 2=비활성)"
+140,GETSET_TP_APP,param,8,s2,set_app_state,1,decimal,,"대상 TP app 상태 제어 (0:동작없음, 1:활성, 2:비활성, 8:실행, 9:강제종료)"
+150,GET_DATE_TIME,data,2,s2,year,1,decimal,,년 (e.g. 2022)
+150,GET_DATE_TIME,data,4,s2,month,1,decimal,,월 (1~12)
+150,GET_DATE_TIME,data,6,s2,day,1,decimal,,일 (1~31)
+150,GET_DATE_TIME,data,8,s2,hour,1,decimal,,시 (0~23)
+150,GET_DATE_TIME,data,10,s2,minute,1,decimal,,분 (0~59)
+150,GET_DATE_TIME,data,12,s2,second,1,decimal,,초 (0~59)
+161,SET_SYS_VAR,param,2,s2,item,1,decimal,,item (of set data)
+161,SET_SYS_VAR,param,4,s1,value,1,decimal,,"value; example item 42=replay speed, item 40=tool number"
+170,GET_HW_INFO,data,2,s2,cpu_temperature,0.1,decimal,,cpu 온도 * 10
+170,GET_HW_INFO,data,4,s2,mainboard_temperature,0.1,decimal,,메인보드 온도 * 10
+170,GET_HW_INFO,data,6,s2,systemboard_temperature,0.1,decimal,,시스템보드 온도 * 10
+172,GET_IP_INFO,param,2,s2,LAN,1,decimal,,LAN (1~3)
+172,GET_IP_INFO,data,4,s2,IP_1,1,decimal,,IP-1
+172,GET_IP_INFO,data,6,s2,IP_2,1,decimal,,IP-2
+172,GET_IP_INFO,data,8,s2,IP_3,1,decimal,,IP-3
+172,GET_IP_INFO,data,10,s2,IP_4,1,decimal,,IP-4
+174,GET_TOOL_INFO,param,2,s1,tool_no,1,decimal,,툴 번호
+174,GET_TOOL_INFO,param,3,s1,tool_data_type,1,decimal,,"0=길이, 1=각도, 2=중심, 3=이너셔"
+174,GET_TOOL_INFO,data,4,f4,tool_weight,1,decimal,,툴 중량
+174,GET_TOOL_INFO,data,8,f4,tool_data_x,1,decimal,,툴 데이터 X값
+174,GET_TOOL_INFO,data,12,f4,tool_data_y,1,decimal,,툴 데이터 Y값
+174,GET_TOOL_INFO,data,16,f4,tool_data_z,1,decimal,,툴 데이터 Z값
+176,GET_UCRD_INFO,param,2,s1,user_coordinate_no,1,decimal,,사용자좌표계 번호
+176,GET_UCRD_INFO,param,3,s1,user_coordinate_data_type,1,decimal,,"0=길이, 1=각도"
+176,GET_UCRD_INFO,data,4,f4,x,1,decimal,,사용자좌표계 데이터 X값
+176,GET_UCRD_INFO,data,8,f4,y,1,decimal,,사용자좌표계 데이터 Y값
+176,GET_UCRD_INFO,data,12,f4,z,1,decimal,,사용자좌표계 데이터 Z값
+1000,GET_CIFX_STATUS,param,2,s1,slot_no,1,decimal,,Slot 번호 = 1~3
+1000,GET_CIFX_STATUS,param,2,s1,slot_no,1,decimal,,Slot 번호 = 1~3
+1000,GET_CIFX_STATUS,param,2,s1,slot_no,1,decimal,,Slot 번호 = 1~3
+1000,GET_CIFX_STATUS,param,2,s1,slot_no,1,decimal,,Slot 번호 = 1~3
+1000,GET_CIFX_STATUS,param,2,s1,slot_no,1,decimal,,Slot 번호 = 1~3
+1000,GET_CIFX_STATUS,param,3,s1,status_group,1,decimal,,상태 1
+1000,GET_CIFX_STATUS,param,3,s1,status_group,1,decimal,,상태 2
+1000,GET_CIFX_STATUS,param,3,s1,status_group,1,decimal,,상태 3
+1000,GET_CIFX_STATUS,param,3,s1,status_group,1,decimal,,상태 4
+1000,GET_CIFX_STATUS,param,3,s1,status_group,1,decimal,,상태 5
+1000,GET_CIFX_STATUS,data,4,s4,channel_status,1,binary,,채널 상태
+1000,GET_CIFX_STATUS,data,4,s1,input_handshake_mode,1,binary,,Input Data Handshake Mode
+1000,GET_CIFX_STATUS,data,4,byte[16],reserved,1,decimal,,Reserved
+1000,GET_CIFX_STATUS,data,4,s4,slave_communication_status,1,binary,,슬레이브 통신 상태; 1=OK
+1000,GET_CIFX_STATUS,data,4,s4,reserved,1,decimal,,Reserved
+1000,GET_CIFX_STATUS,data,6,s1,output_handshake_mode,1,binary,,Output Data Handshake Mode
+1000,GET_CIFX_STATUS,data,8,s4,communication_status,1,binary,,"통신 상태; 0=Unknown,1=Not Configured,2=Stop,3=Idle,4=Operate"
+1000,GET_CIFX_STATUS,data,8,s4,host_system_watchdog,1,decimal,,Host System Watchdog
+1000,GET_CIFX_STATUS,data,8,s4,reserved,1,decimal,,Reserved
+1000,GET_CIFX_STATUS,data,8,byte[12],reserved,1,decimal,,Reserved
+1000,GET_CIFX_STATUS,data,12,s4,communication_error_code,1,hex,,"통신 에러 코드; 0=정상, 그외=Error Code (32Bit Hexa)"
+1000,GET_CIFX_STATUS,data,12,s4,communication_error_count,1,decimal,,통신에러 누적 횟수
+1000,GET_CIFX_STATUS,data,12,s4,reserved,1,decimal,,Reserved
+1000,GET_CIFX_STATUS,data,16,s2,status_diagnosis_version,1,binary,,상태 진단 버전
+1000,GET_CIFX_STATUS,data,16,s4,normal_slave_count,1,decimal,,정상동작 슬레이브 수
+1000,GET_CIFX_STATUS,data,17,s1,input_handshake_error,1,binary,,Input Data Handshake Error
+1000,GET_CIFX_STATUS,data,18,s2,watchdog_timeout,1,decimal,ms,Watchdog Timeout (ms)
+1000,GET_CIFX_STATUS,data,18,s1,output_handshake_error,1,binary,,Output Data Handshake Error
+1001,SET_CIFX_CONTROL,param,2,s1,slot_no,1,decimal,,Slot 번호 = 1~3
+1001,SET_CIFX_CONTROL,param,3,s1,control_group,1,decimal,,제어 그룹 = 1
+1001,SET_CIFX_CONTROL,param,4,s1,communication_restart,1,decimal,,0 -> 1 값 변경시 재시작 요청
+1010,GET_PROFIBUS_DP_STATUS,param,2,s1,slot_no,1,decimal,,Slot 번호 = 1~3
+1010,GET_PROFIBUS_DP_STATUS,param,3,s1,status_group,1,decimal,,command-specific status / slave-list selector; 문서 표에서 상태=1 및 연결/교환/진단 슬레이브 리스트=2~7로 정의
+1010,GET_PROFIBUS_DP_STATUS,data,4,byte[16],status_or_slave_bitmap,1,binary,,Node/슬레이브 상태 bitmap; 문서상 Node 0~127 비트 매핑
+1012,GET_DEVICENET_STATUS,param,2,s1,slot_no,1,decimal,,Slot 번호 = 1~3
+1012,GET_DEVICENET_STATUS,param,3,s1,status_group,1,decimal,,command-specific status / slave-list selector; 문서 표에서 상태=1 및 연결/교환/진단 슬레이브 리스트=2~7로 정의
+1012,GET_DEVICENET_STATUS,data,4,byte[16],status_or_slave_bitmap,1,binary,,Node/슬레이브 상태 bitmap; 문서상 Node 0~127 비트 매핑
+1014,GET_ETHERNET_IP_STATUS,param,2,s1,slot_no,1,decimal,,Slot 번호 = 1~3
+1014,GET_ETHERNET_IP_STATUS,param,3,s1,status_group,1,decimal,,command-specific status / slave-list selector; 문서 표에서 상태=1 및 연결/교환/진단 슬레이브 리스트=2~7로 정의
+1014,GET_ETHERNET_IP_STATUS,data,4,byte[16],status_or_slave_bitmap,1,binary,,Node/슬레이브 상태 bitmap; 문서상 Node 0~127 비트 매핑
+1016,GET_PROFINET_IO_STATUS,param,2,s1,slot_no,1,decimal,,Slot 번호 = 1~3
+1016,GET_PROFINET_IO_STATUS,param,3,s1,status_group,1,decimal,,command-specific status / slave-list selector; 문서 표에서 상태=1 및 연결/교환/진단 슬레이브 리스트=2~7로 정의
+1016,GET_PROFINET_IO_STATUS,data,4,byte[16],status_or_slave_bitmap,1,binary,,Node/슬레이브 상태 bitmap; 문서상 Node 0~127 비트 매핑
+1018,GET_ETHERCAT_STATUS,param,2,s1,slot_no,1,decimal,,Slot 번호 = 1~3
+1018,GET_ETHERCAT_STATUS,param,3,s1,status_group,1,decimal,,command-specific status / slave-list selector; 문서 표에서 상태=1 및 연결/교환/진단 슬레이브 리스트=2~7로 정의
+1018,GET_ETHERCAT_STATUS,data,4,byte[16],status_or_slave_bitmap,1,binary,,Node/슬레이브 상태 bitmap; 문서상 Node 0~127 비트 매핑
+2000,GET_CUR_SPOTGUN_NO,param,2,s2,task_no,1,decimal,,task_no (0~7)
+2000,GET_CUR_SPOTGUN_NO,data,4,s1,master_gun_no,1,decimal,,현재 스폿건 번호 (master gun)
+2000,GET_CUR_SPOTGUN_NO,data,5,s2,master_cnd_no,1,decimal,,현재 조건 번호 (master cnd)
+2000,GET_CUR_SPOTGUN_NO,data,7,s1,master_seq_no,1,decimal,,현재 시퀀스 번호 (master seq)
+2000,GET_CUR_SPOTGUN_NO,data,8,s1,slave1_gun_no,1,decimal,,현재 스폿건 번호 (slave gun #1)
+2000,GET_CUR_SPOTGUN_NO,data,9,s2,slave1_cnd_no,1,decimal,,현재 조건 번호 (slave cnd #1)
+2000,GET_CUR_SPOTGUN_NO,data,11,s1,slave1_seq_no,1,decimal,,현재 시퀀스 번호 (slave gun #1)
+2000,GET_CUR_SPOTGUN_NO,data,12,s1,slave2_gun_no,1,decimal,,현재 스폿건 번호 (slave gun #2)
+2000,GET_CUR_SPOTGUN_NO,data,13,s2,slave2_cnd_no,1,decimal,,현재 조건 번호 (slave cnd #2)
+2000,GET_CUR_SPOTGUN_NO,data,15,s1,slave2_seq_no,1,decimal,,현재 시퀀스 번호 (slave gun #2)
+2000,GET_CUR_SPOTGUN_NO,data,16,s1,slave3_gun_no,1,decimal,,현재 스폿건 번호 (slave gun #3)
+2000,GET_CUR_SPOTGUN_NO,data,17,s2,slave3_cnd_no,1,decimal,,현재 조건 번호 (slave cnd #3)
+2000,GET_CUR_SPOTGUN_NO,data,19,s1,slave3_seq_no,1,decimal,,현재 시퀀스 번호 (slave gun #3)
+2010,GET_SPOTWELD_INFO,param,2,s2,task_no,1,decimal,,task_no (0~7)
+2010,GET_SPOTWELD_INFO,param,4,s2,gun_no,1,decimal,,"gun_no (0=현재 선택된 건번호, 1~16)"
+2010,GET_SPOTWELD_INFO,data,6,s2,gun_search_status,1,decimal,,"건서치 상태 (1=완료, 0=미완료)"
+2010,GET_SPOTWELD_INFO,data,8,s2,moving_electrode_wear,0.01,decimal,,이동전극 마모량 x 100
+2010,GET_SPOTWELD_INFO,data,10,s2,fixed_electrode_wear,0.01,decimal,,고정전극 마모량 x 100
+2010,GET_SPOTWELD_INFO,data,12,s2,pressure_command,0.1,decimal,,가압력 지령값 x 10
+2010,GET_SPOTWELD_INFO,data,14,s2,pressure_current,0.1,decimal,,가압력 현재값 x 10
+3000,GET_ARCTWELD_INFO_3000,param,2,s1,welder_no,1,decimal,,용접기 번호 (0~1)
+3000,GET_ARCTWELD_INFO_3000,param,3,s1,twin_welder_no,1,decimal,,트윈용접기 번호 (0~1)
+3000,GET_ARCTWELD_INFO_3000,data,4,f4,welding_current,1,decimal,,용접 전류
+3000,GET_ARCTWELD_INFO_3000,data,8,f4,welding_voltage,1,decimal,,용접 전압
+3000,GET_ARCTWELD_INFO_3000,data,12,s2,welder_error,1,hex,,용접기 에러
+3000,GET_ARCTWELD_INFO_3000,data,16,f4,wire_feeding_speed,1,decimal,,와이어 피딩속도
+3001,GET_ARCTWELD_INFO_3001,param,2,s1,welder_no,1,decimal,,용접기 번호 (0~1)
+3001,GET_ARCTWELD_INFO_3001,param,3,s1,twin_welder_no,1,decimal,,트윈용접기 번호 (0~1)
+3001,GET_ARCTWELD_INFO_3001,data,4,f4,feed_motor_current,1,decimal,,피드 모터 전류
+3001,GET_ARCTWELD_INFO_3001,data,8,f4,seam_tracking_data,1,decimal,,심트레킹 데이터
+3001,GET_ARCTWELD_INFO_3001,data,12,s2,welding_processor,1,decimal,,용접 프로세서
+3001,GET_ARCTWELD_INFO_3001,data,16,f4,reserved,1,decimal,,
+3002,GET_ARCTWELD_INFO_3002,param,2,s1,welder_no,1,decimal,,용접기 번호 (0~1)
+3002,GET_ARCTWELD_INFO_3002,param,3,s1,twin_welder_no,1,decimal,,트윈용접기 번호 (0~1)
+3002,GET_ARCTWELD_INFO_3002,data,4,s4,welder_total_operation_time,1,decimal,s,용접기 전체 동작시간(s)
+3002,GET_ARCTWELD_INFO_3002,data,8,s1,welder_version_low,1,decimal,,용접기 버전 - 하위(Vx.x.255)
+3002,GET_ARCTWELD_INFO_3002,data,9,s1,welder_version_mid,1,decimal,,용접기 버전 - 중간(Vx.255.x)
+3002,GET_ARCTWELD_INFO_3002,data,10,s1,welder_version_high,1,decimal,,용접기 버전 - 상위(V255.x.x)
+3004,GET_ARCTWELD_INFO_3004,param,2,s1,welder_no,1,decimal,,용접기 번호 (0~1)
+3004,GET_ARCTWELD_INFO_3004,param,3,s1,twin_welder_no,1,decimal,,트윈용접기 번호 (0~1)
+3004,GET_ARCTWELD_INFO_3004,data,4,s1,welder_status_0,1,binary,,WCR(와이어 접축상태)=0x01; 토치 충돌=0x02; 용접전원 OK=0x04; 와이어 스틱상태=0x08; 용접기 에러=0x10; 프로세스 활성=0x20; 통신 상태=0x40; 와이어 사용가능=0x80
+3004,GET_ARCTWELD_INFO_3004,data,5,s1,welder_status_1,1,binary,,토치 상태=0x01; 인칭 상태=0x02; 역인칭 상태=0x04; 가스체크=0x08; 시너직 사용가능=0x10; 리밋 상태=0x20; 설정범위 초과=0x40
+3005,GET_ARCTWELD_INFO_3005,param,2,s1,welder_no,1,decimal,,용접기 번호 (0~1)
+3005,GET_ARCTWELD_INFO_3005,param,3,s1,twin_welder_no,1,decimal,,트윈용접기 번호 (0~1)
+3005,GET_ARCTWELD_INFO_3005,data,4,f4,welding_current,1,decimal,,용접 전류
+3005,GET_ARCTWELD_INFO_3005,data,8,f4,welding_voltage,1,decimal,,용접 전압
+3005,GET_ARCTWELD_INFO_3005,data,12,s2,job_prog_no,1,decimal,,Job/Prog 번호
+3005,GET_ARCTWELD_INFO_3005,data,14,s2,operation_mode,1,decimal,,동작 모드
+3005,GET_ARCTWELD_INFO_3005,data,16,s2,synergic_code,1,decimal,,시너직 코드
+3006,GET_ARCTWELD_INFO_3006,param,2,s1,welder_no,1,decimal,,용접기 번호 (0~1)
+3006,GET_ARCTWELD_INFO_3006,param,3,s1,twin_welder_no,1,decimal,,트윈용접기 번호 (0~1)
+3006,GET_ARCTWELD_INFO_3006,data,4,f4,pulse_dynamic_compensation,1,decimal,,펄스 다이나믹 보정
+3006,GET_ARCTWELD_INFO_3006,data,8,f4,wire_burnback,1,decimal,,와이어 번백
+3006,GET_ARCTWELD_INFO_3006,data,12,f4,process_control,1,decimal,,프로세스 제어
+3006,GET_ARCTWELD_INFO_3006,data,16,f4,arc_characteristic,1,decimal,,아크 특성
+3007,GET_ARCTWELD_INFO_3007,param,2,s1,welder_no,1,decimal,,용접기 번호 (0~1)
+3007,GET_ARCTWELD_INFO_3007,param,3,s1,twin_welder_no,1,decimal,,트윈용접기 번호 (0~1)
+3007,GET_ARCTWELD_INFO_3007,data,4,s1,wire_material,1,decimal,,와이어 재질
+3007,GET_ARCTWELD_INFO_3007,data,5,s1,wire_diameter,1,decimal,,와이어 직경
+3007,GET_ARCTWELD_INFO_3007,data,6,s1,gas_type,1,decimal,,가스 타입
+3007,GET_ARCTWELD_INFO_3007,data,7,s1,welding_mode,1,decimal,,용접 모드
+3007,GET_ARCTWELD_INFO_3007,data,8,s1,twin_operation_mode,1,decimal,,트윈 동작 모드
+3009,GET_ARCTWELD_INFO_3009,param,2,s1,welder_no,1,decimal,,용접기 번호 (0~1)
+3009,GET_ARCTWELD_INFO_3009,param,3,s1,twin_welder_no,1,decimal,,트윈용접기 번호 (0~1)
+3009,GET_ARCTWELD_INFO_3009,data,4,s1,command_status_0,1,binary,,아크 on=0x01; 로봇 준비=0x02; 마스터 토치 선택=0x04; 가스 on=0x08; 와이어 인칭=0x10; 와이어 역인칭=0x20; 용접기 에러 리셋=0x40; 와이어 스틱체크=0x80
+3009,GET_ARCTWELD_INFO_3009,data,5,s1,command_status_1,1,binary,,용접 시뮬레이션=0x01; 필럿 아크=0x02; 리프트 아크 사용=0x04; 수퍼 펄스 사용=0x08; 온라인 상태=0x10; Job 모드 활성=0x20; 전압 설정 모드=0x40; 전류 설정 모드=0x80
+3009,GET_ARCTWELD_INFO_3009,data,6,s1,command_status_2,1,binary,,로봇 토치 충돌=0x01; 로봇 에러 상태=0x02
+3010,GET_ARCTWELD_INFO_3010,param,2,s1,welder_no,1,decimal,,용접기 번호 (0~1)
+3010,GET_ARCTWELD_INFO_3010,param,3,s1,twin_welder_no,1,decimal,,트윈용접기 번호 (0~1)
+3010,GET_ARCTWELD_INFO_3010,data,4,s2,arc_on_condition_no,1,decimal,,현재 아크on 조건 번호
+3010,GET_ARCTWELD_INFO_3010,data,6,s2,touch_sensing_condition_no,1,decimal,,현재 터치센싱 조건 번호
+3010,GET_ARCTWELD_INFO_3010,data,8,s2,weaving_condition_no,1,decimal,,현재 위빙 조건 번호
+3010,GET_ARCTWELD_INFO_3010,data,10,s2,lvs_condition_no,1,decimal,,현재 LVS 조건 번호
+3010,GET_ARCTWELD_INFO_3010,data,12,s2,arccond_condition_no,1,decimal,,현재 arccond 조건 번호
+4000,GET_CONVEYOR_INFO,param,2,s2,conv_no,1,decimal,,conv_no (0~7)
+4000,GET_CONVEYOR_INFO,data,4,s2,conveyor_pulse,1,decimal,,컨베이어 펄스
+4000,GET_CONVEYOR_INFO,data,6,s2,workpiece_position,1,decimal,,작업물 위치
+4000,GET_CONVEYOR_INFO,data,8,s2,conveyor_speed,1,decimal,,컨베이어 속도
+4000,GET_CONVEYOR_INFO,data,10,s2,workpiece_count,1,decimal,,작업물 개수
+4000,GET_CONVEYOR_INFO,data,12,s2,limit_switch_input,1,decimal,,리밋스위치 입력
+4000,GET_CONVEYOR_INFO,data,14,s2,raw_pulse,1,decimal,,raw 펄스
+4000,GET_CONVEYOR_INFO,data,14,s4,encoder_resolution,1,decimal,,엔코더 분해능
+4010,GET_CONVEYOR_INFO_LIN,param,2,s2,conv_no,1,decimal,,conv_no (0~7)
+4010,GET_CONVEYOR_INFO_LIN,data,4,f4,horizontal_angle,1,decimal,,직선컨베이어 수평각도
+4010,GET_CONVEYOR_INFO_LIN,data,8,f4,vertical_angle,1,decimal,,직선컨베이어 수직각도
+4020,GET_CONVEYOR_INFO_CIR,param,2,s2,conv_no,1,decimal,,conv_no (0~7)
+4020,GET_CONVEYOR_INFO_CIR,data,4,f4,x_angle,1,decimal,,원형컨베이어 각도(X축)
+4020,GET_CONVEYOR_INFO_CIR,data,8,f4,y_angle,1,decimal,,원형컨베이어 각도(Y축)
+4040,GET_CONVEYOR_INFO_CIR2,param,2,s2,conv_no,1,decimal,,conv_no (0~7)
+4040,GET_CONVEYOR_INFO_CIR2,data,4,f4,center_x,1,decimal,,원형컨베이어 중심(X)
+4040,GET_CONVEYOR_INFO_CIR2,data,8,f4,center_y,1,decimal,,원형컨베이어 중심(Y)
+4040,GET_CONVEYOR_INFO_CIR2,data,12,f4,center_z,1,decimal,,원형컨베이어 중심(Z)
+4100,GET_MONITOR_INFO,param,2,s1,gun_no,1,decimal,,gun_no (1~2)
+4100,GET_MONITOR_INFO,data,4,f4,dispense_rate,1,decimal,cc/s,토출비 (cc/s)
+4100,GET_MONITOR_INFO,data,8,s2,rpm_command,1,decimal,rpm,rpm 지령값
+4100,GET_MONITOR_INFO,data,10,s2,rpm_current,1,decimal,rpm,rpm 현재값
+4100,GET_MONITOR_INFO,data,12,f4,pressure,1,decimal,bar,압력 (bar)
+4100,GET_MONITOR_INFO,data,16,f4,dispense_amount,1,decimal,cc,토출량 (cc) - 차종에 대한 합산 값

@@ -3,7 +3,7 @@
 코드 체계: E-<분류><일련번호>
   1xxx  연결 (connection)  - 재연결 대상
   2xxx  입출력 (io)        - E-2203 은 Modbus Illegal Data Address
-  3xxx  프로토콜 (protocol)
+  3xxx  프로토콜 (protocol)        - E-3101 은 소켓을 다시 썼다는 뜻 (다음 읽기부터 정상)
   9xxx  분류 불가 (internal)
 """
 from enum import Enum
@@ -24,6 +24,8 @@ class ModbusErrorCode(str, Enum):
     ADDR_OUT_OF_RANGE = "E-2203"
 
     PROTOCOL_ERROR = "E-3001"
+    # 소켓의 command / parameter 가 설정과 달라(재부팅 등) 다시 썼다. result 는 다음 읽기부터 유효하다
+    SOCKET_REWRITTEN = "E-3101"
 
     UNKNOWN = "E-9001"
 

@@ -1,0 +1,46 @@
+﻿command,command_name,section,offset,type,name,scale,format,unit,description
+100,GET_TASK_INFO,param,2,s2,task_no,1,decimal,,task_no (0~7)
+100,GET_TASK_INFO,data,4,s2,task_active,1,decimal,,task 활성화 상태
+100,GET_TASK_INFO,data,6,s2,task_program_no,1,decimal,,task 프로그램 번호
+100,GET_TASK_INFO,data,8,s2,task_step_no,1,decimal,,task 스텝 번호
+100,GET_TASK_INFO,data,10,s2,task_function_no,1,decimal,,task 펑션 번호
+100,GET_TASK_INFO,data,12,s2,task_main_program_no,1,decimal,,task 메인 프로그램 번호
+120,GET_AXIS_INFO,param,2,s2,type,1,decimal,,"1=현재위치(축각도), 2=현재위치(베이스좌표), 3=현재위치(베이스좌표/User좌표), 6=축속도, 7=모터속도, 8=부가축 속도제어시 모터속도(rpm) 지령값, 10=부하율(I/Ir), 11=부하율(I/Ip), 12=부하율(연속), 15=엔코더(온도), 18=축별누적거리"
+120,GET_AXIS_INFO,param,4,s2,start_axis_no,1,decimal,,시작 축 번호 (1~)
+120,GET_AXIS_INFO,data,8,f4,axis_0_value,1,decimal,,(시작축 + 0축) 해당값
+120,GET_AXIS_INFO,data,12,f4,axis_1_value,1,decimal,,(시작축 + 1축) 해당값
+120,GET_AXIS_INFO,data,16,f4,axis_2_value,1,decimal,,(시작축 + 2축) 해당값
+121,SET_AXIS_INFO,param,2,s2,type,1,decimal,rpm,8=부가축 속도제어시 모터속도 (rpm) 지령값
+121,SET_AXIS_INFO,param,4,s2,start_axis_no,1,decimal,,시작 축 번호 (1~)
+121,SET_AXIS_INFO,param,8,f4,axis_0_value,1,decimal,,(시작축 + 0축) 해당값
+121,SET_AXIS_INFO,param,12,f4,axis_1_value,1,decimal,,(시작축 + 1축) 해당값
+121,SET_AXIS_INFO,param,16,f4,axis_2_value,1,decimal,,(시작축 + 2축) 해당값
+140,GETSET_TP_APP,param,2,s2,get_app_shortcut_no,1,decimal,,현재 TP app의 단축키 번호 (1~9)
+140,GETSET_TP_APP,param,4,s2,set_app_shortcut_no,1,decimal,,상태를 읽거나 제어할 대상 TP app의 단축키 번호 (1~9)
+140,GETSET_TP_APP,data,6,s2,app_state,1,decimal,,"대상 TP app 상태 현재값 (-1=없음, 0=미실행, 1=활성, 2=비활성)"
+140,GETSET_TP_APP,param,8,s2,set_app_state,1,decimal,,"대상 TP app 상태 제어 (0:동작없음, 1:활성, 2:비활성, 8:실행, 9:강제종료)"
+170,GET_HW_INFO,data,2,s2,cpu_temperature,0.1,decimal,,cpu 온도 * 10
+170,GET_HW_INFO,data,4,s2,mainboard_temperature,0.1,decimal,,메인보드 온도 * 10
+170,GET_HW_INFO,data,6,s2,systemboard_temperature,0.1,decimal,,시스템보드 온도 * 10
+174,GET_TOOL_INFO,param,2,s1,tool_no,1,decimal,,툴 번호
+174,GET_TOOL_INFO,param,3,s1,tool_data_type,1,decimal,,"0=길이, 1=각도, 2=중심, 3=이너셔"
+174,GET_TOOL_INFO,data,4,f4,tool_weight,1,decimal,,툴 중량
+174,GET_TOOL_INFO,data,8,f4,tool_data_x,1,decimal,,툴 데이터 X값
+174,GET_TOOL_INFO,data,12,f4,tool_data_y,1,decimal,,툴 데이터 Y값
+174,GET_TOOL_INFO,data,16,f4,tool_data_z,1,decimal,,툴 데이터 Z값
+1010,GET_PROFIBUS_DP_STATUS,param,2,s1,slot_no,1,decimal,,Slot 번호 = 1~3
+1010,GET_PROFIBUS_DP_STATUS,param,3,s1,status_group,1,decimal,,command-specific status / slave-list selector; 문서 표에서 상태=1 및 연결/교환/진단 슬레이브 리스트=2~7로 정의
+1010,GET_PROFIBUS_DP_STATUS,data,4,byte[16],status_or_slave_bitmap,1,binary,,Node/슬레이브 상태 bitmap; 문서상 Node 0~127 비트 매핑
+2000,GET_CUR_SPOTGUN_NO,param,2,s2,task_no,1,decimal,,task_no (0~7)
+2000,GET_CUR_SPOTGUN_NO,data,4,s1,master_gun_no,1,decimal,,현재 스폿건 번호 (master gun)
+2000,GET_CUR_SPOTGUN_NO,data,5,s2,master_cnd_no,1,decimal,,현재 조건 번호 (master cnd)
+2000,GET_CUR_SPOTGUN_NO,data,7,s1,master_seq_no,1,decimal,,현재 시퀀스 번호 (master seq)
+2000,GET_CUR_SPOTGUN_NO,data,8,s1,slave1_gun_no,1,decimal,,현재 스폿건 번호 (slave gun #1)
+2000,GET_CUR_SPOTGUN_NO,data,9,s2,slave1_cnd_no,1,decimal,,현재 조건 번호 (slave cnd #1)
+2000,GET_CUR_SPOTGUN_NO,data,11,s1,slave1_seq_no,1,decimal,,현재 시퀀스 번호 (slave gun #1)
+2000,GET_CUR_SPOTGUN_NO,data,12,s1,slave2_gun_no,1,decimal,,현재 스폿건 번호 (slave gun #2)
+2000,GET_CUR_SPOTGUN_NO,data,13,s2,slave2_cnd_no,1,decimal,,현재 조건 번호 (slave cnd #2)
+2000,GET_CUR_SPOTGUN_NO,data,15,s1,slave2_seq_no,1,decimal,,현재 시퀀스 번호 (slave gun #2)
+2000,GET_CUR_SPOTGUN_NO,data,16,s1,slave3_gun_no,1,decimal,,현재 스폿건 번호 (slave gun #3)
+2000,GET_CUR_SPOTGUN_NO,data,17,s2,slave3_cnd_no,1,decimal,,현재 조건 번호 (slave cnd #3)
+2000,GET_CUR_SPOTGUN_NO,data,19,s1,slave3_seq_no,1,decimal,,현재 시퀀스 번호 (slave gun #3)

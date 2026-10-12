@@ -15,8 +15,11 @@
 
 - word_endian: 2레지스터 이상 값의 순서. le = 앞 레지스터가 하위 워드 (collector-plc 와 동일).
 - max_gap: 빈 번지가 이 개수 이하면 같은 요청으로 묶는다. 장비가 범위를 거부하면 자동으로 쪼개 다시 읽는다.
-- format: dec | hex. 포인트별로 덮어쓸 수 있다. hex 는 scale 을 적용하지 않은 원시 비트를 "0xFF38" 처럼 낸다.
+- format: dec | hex | bin. 포인트별로 덮어쓸 수 있다. hex / bin 은 scale 을 적용하지 않은 원시 비트를
+  "0xFF38" / "0b00000101" 처럼 낸다.
+- sockets: HI6 S relay socket 배치. 카탈로그로 펼치는 일은 core.modbus_client.sockets 가 한다.
 """
+import itertools
 import json
 import logging
 import struct
@@ -26,12 +29,16 @@ from typing import Any
 
 from model import (
     MAX_READ_REGISTERS,
+    SOCKET_BLOCKS,
+    CommandCatalog,
     MemoryMapPoint,
     MemoryMapSettings,
     PointType,
     ReadRequest,
     RegisterKind,
     Sample,
+    SocketEntry,
+    SocketSetup,
     Value,
     ValueFormat,
     WordEndian,
@@ -39,6 +46,14 @@ from model import (
 
 from .base_client import BaseModbusClient
 from .exceptions import ModbusClientError, ModbusErrorCode
+from .sockets import (
+    decode_point,
+    describe_socket,
+    expand_socket,
+    registers_to_blocks,
+    setup_mismatch,
+    write_socket,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,33 +62,54 @@ _READERS = {
     RegisterKind.INPUT: BaseModbusClient.read_input_registers,
 }
 _SIGNED_TYPES = {PointType.I8, PointType.I16, PointType.I32, PointType.I64}
+# 맵 전체에 걸리는 설정. 파일을 여러 개로 나눌 때는 첫 번째(기준) 파일에만 둔다
+GLOBAL_KEYS = ("word_endian", "max_gap", "format", "s_relay_base")
+# 파일을 나눠 담을 수 있는 목록 키
+LIST_KEYS = ("holding", "input", "sockets")
 
 
 class MemoryMap:
-    def __init__(self, settings: MemoryMapSettings) -> None:
+    def __init__(self, settings: MemoryMapSettings, catalog: CommandCatalog | None = None) -> None:
         self.settings = settings
+        self.catalog = catalog
+        self.sockets = tuple(self._expand_socket(e) for e in settings.sockets)
+        _check_sockets(self.sockets, settings)
         self.plan = tuple(
             r for kind in RegisterKind for r in _plan(kind, settings.points_of(kind), settings.max_gap)
         )
+        # 붙어 있는 소켓은 한 요청으로 읽는다
+        self.socket_plan = _plan_sockets(self.sockets)
 
     @classmethod
-    def from_json(cls, path: str | Path) -> "MemoryMap":
-        with open(path, encoding="utf-8") as f:
-            return cls.from_dict(json.load(f))
+    def from_json(cls, *paths: str | Path, catalog: CommandCatalog | None = None) -> "MemoryMap":
+        """맵 파일 하나 또는 여러 개를 읽어 합친다. 경로 순서가 곧 우선순위다 (첫 번째가 기준 파일)."""
+        if not paths:
+            raise ValueError("메모리 맵 경로가 없다")
+        return cls.from_dict(_merge([Path(p) for p in paths]), catalog=catalog)
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "MemoryMap":
-        return cls(MemoryMapSettings.model_validate(raw))
+    def from_dict(cls, raw: dict[str, Any], catalog: CommandCatalog | None = None) -> "MemoryMap":
+        return cls(MemoryMapSettings.model_validate(raw), catalog=catalog)
 
     def read(self, client: BaseModbusClient) -> list[Sample]:
-        """계획된 요청으로 전체 포인트를 읽는다. 연결 계열 에러만 예외로 올리고 나머지는 Sample.error 에 담는다."""
+        """계획된 요청으로 전체 포인트를 읽는다. 연결 계열 에러만 예외로 올리고 나머지는 Sample.error 에 담는다.
+
+        소켓은 command / parameter 자리까지 같이 읽으므로 매 읽기가 곧 전제조건 확인이다.
+        기대값과 다르면(재부팅으로 초기화 등) 다시 쓰고, 그 소켓 result 는 이번 읽기만 E-3101 로 낸다.
+        """
         samples: dict[str, Sample] = {}
         plan: list[ReadRequest] = []
         for request in self.plan:
             plan += self._execute(client, request, samples)
         # 범위 거부로 쪼갠 계획은 다음 읽기부터 그대로 쓴다
         self.plan = tuple(plan)
-        return [samples[p.name] for kind in RegisterKind for p in self.settings.points_of(kind)]
+        socket_plan: list[tuple[SocketSetup, ...]] = []
+        for group in self.socket_plan:
+            socket_plan += self._read_sockets(client, group, samples)
+        self.socket_plan = tuple(socket_plan)
+        names = [p.name for kind in RegisterKind for p in self.settings.points_of(kind)]
+        names += [p.name for s in self.sockets for p in s.points]
+        return [samples[n] for n in names]
 
     @staticmethod
     def values(samples: list[Sample]) -> dict[str, Value]:
@@ -81,10 +117,17 @@ class MemoryMap:
         return {s.name: s.value for s in samples if s.error is None}
 
     def describe_plan(self) -> str:
-        return "\n".join(
+        """실제로 나갈 읽기 요청과 소켓 배치. 장비 없이 설정을 확인할 때 쓴다."""
+        lines = [
             f"{r.kind.value} {r.start}~{r.end - 1} ({r.count} regs): {', '.join(p.name for p in r.points)}"
             for r in self.plan
-        )
+        ]
+        lines += [
+            f"holding {g[0].base}~{g[-1].end - 1} ({g[-1].end - g[0].base} regs): sockets {', '.join(s.name for s in g)}"
+            for g in self.socket_plan
+        ]
+        lines += [describe_socket(s) for s in self.sockets]
+        return "\n".join(lines)
 
     def decode(self, point: MemoryMapPoint, registers: list[int]) -> Value:
         """포인트가 차지하는 레지스터만 받아 값으로 바꾼다."""
@@ -123,6 +166,55 @@ class MemoryMap:
             registers += words if self.settings.word_endian is WordEndian.LE else words[::-1]
         return registers
 
+    def _expand_socket(self, entry: SocketEntry) -> SocketSetup:
+        if self.catalog is None:
+            raise ValueError(f"소켓 {entry.name}: command 카탈로그가 없다 (COMMAND_CATALOG_FILE 을 설정한다)")
+        # MemoryMapSettings 가 sockets 가 있으면 s_relay_base 를 요구한다
+        return expand_socket(entry, self.catalog, self.settings.s_relay_base)
+
+    def _read_sockets(
+        self, client: BaseModbusClient, group: tuple[SocketSetup, ...], samples: dict[str, Sample]
+    ) -> list[tuple[SocketSetup, ...]]:
+        start = group[0].base
+        try:
+            registers = client.read_holding_registers(start, group[-1].end - start)
+        except ModbusClientError as e:
+            if e.code.requires_reconnect:
+                raise
+            if e.code is ModbusErrorCode.ADDR_OUT_OF_RANGE and len(group) > 1:
+                logger.warning("범위 거부로 소켓 요청 분할: holding %d~%d -> %d개", start, group[-1].end - 1, len(group))
+                return [g for s in group for g in self._read_sockets(client, (s,), samples)]
+            for socket in group:
+                _socket_samples(socket, samples, error=e.code.value)
+            return [group]
+        for socket in group:
+            offset = socket.base - start
+            self._check_socket(client, socket, registers[offset : offset + socket.end - socket.base], samples)
+        return [group]
+
+    def _check_socket(
+        self, client: BaseModbusClient, socket: SocketSetup, registers: list[int], samples: dict[str, Sample]
+    ) -> None:
+        blocks = registers_to_blocks(registers)
+        mismatch = setup_mismatch(socket, blocks)
+        if not mismatch:
+            _socket_samples(socket, samples, blocks=blocks)
+            return
+        logger.warning(
+            "소켓 %s(%s) command/parameter 불일치 S%04d~ 현재 %s, 기대 %s -> 다시 쓴다",
+            socket.name, socket.s_range, socket.s_block + mismatch[0],
+            registers[: len(socket.setup_registers)], list(socket.setup_registers),
+        )
+        try:
+            write_socket(client, socket)
+        except ModbusClientError as e:
+            if e.code.requires_reconnect:
+                raise
+            logger.error("소켓 %s 쓰기 실패: %s", socket.name, e)
+            _socket_samples(socket, samples, error=e.code.value)
+            return
+        _socket_samples(socket, samples, error=ModbusErrorCode.SOCKET_REWRITTEN.value)
+
     def _execute(self, client: BaseModbusClient, request: ReadRequest, samples: dict[str, Sample]) -> list[ReadRequest]:
         try:
             registers = _read_registers(client, request)
@@ -147,8 +239,11 @@ class MemoryMap:
     def _convert(self, point: MemoryMapPoint, raw: int) -> int | float | str:
         point_type = point.point_type
         width = point.bits[1] - point.bits[0] + 1 if point.bits else point_type.width
-        if (point.format or self.settings.format) is ValueFormat.HEX:
+        fmt = point.format or self.settings.format
+        if fmt is ValueFormat.HEX:
             return f"0x{raw:0{(width + 3) // 4}X}"
+        if fmt is ValueFormat.BIN:
+            return f"0b{raw:0{width}b}"
         if point_type.struct_format:
             value = struct.unpack(">" + point_type.struct_format, raw.to_bytes(width // 8, "big"))[0]
         elif point_type is PointType.I8 and raw & 0x80:
@@ -161,7 +256,9 @@ class MemoryMap:
         point_type = point.point_type
         width = point.bits[1] - point.bits[0] + 1 if point.bits else point_type.width
         if isinstance(value, str):
-            raw = int(value, 16)
+            text = value.strip().lower()
+            # "0b101" 을 16진으로 읽으면 0xB101 이 되므로 접두사로 진법을 고른다
+            raw = int(text, 2 if text.startswith("0b") else 16)
             if not 0 <= raw < 1 << width:
                 raise ValueError(f"{point.name}: {value} 는 {width}비트를 넘는다")
             return raw
@@ -179,8 +276,78 @@ class MemoryMap:
         return value & ((1 << width) - 1)
 
 
+def _merge(paths: list[Path]) -> dict[str, Any]:
+    """맵 파일들을 하나로 합친다. 최상위 설정은 기준 파일만 쓰고 목록 키는 이어 붙인다."""
+    merged: dict[str, Any] = {key: [] for key in LIST_KEYS}
+    for index, path in enumerate(paths):
+        # Windows 편집기가 붙인 BOM 을 떼고 읽는다
+        with open(path, encoding="utf-8-sig") as f:
+            raw = json.load(f)
+        if not isinstance(raw, dict):
+            raise ValueError(f"{path}: 메모리 맵 최상위는 객체여야 한다")
+        if index == 0:
+            merged.update({k: v for k, v in raw.items() if k not in LIST_KEYS})
+        else:
+            # 조용히 한쪽이 이기면 추적할 수 없으므로 거부한다
+            extra = [k for k in raw if k not in LIST_KEYS]
+            if extra:
+                raise ValueError(f"{path}: 최상위 설정 {extra} 는 기준 파일({paths[0].name})에만 둔다")
+        for key in LIST_KEYS:
+            merged[key] += raw.get(key) or []
+    if len(paths) > 1:
+        logger.info("memory map merged: %s", ", ".join(p.name for p in paths))
+    return merged
+
+
+def _check_sockets(sockets: tuple[SocketSetup, ...], settings: MemoryMapSettings) -> None:
+    """소켓끼리 번지가 겹치면 서로의 설정을 덮어쓰므로 거부한다."""
+    for a, b in itertools.combinations(sorted(sockets, key=lambda s: s.base), 2):
+        if a.end > b.base:
+            raise ValueError(
+                f"소켓 {a.name}({a.s_range}) 와 {b.name}({b.s_range}) 의 번지가 겹친다 "
+                f"(소켓 한 자리 = {SOCKET_BLOCKS} block 이므로 s_block 은 {SOCKET_BLOCKS} 이상 떨어져야 한다)"
+            )
+    point_names = {p.name for kind in RegisterKind for p in settings.points_of(kind)}
+    clashes = sorted(point_names & {p.name for s in sockets for p in s.points})
+    if clashes:
+        raise ValueError(f"소켓 result 이름이 holding/input 포인트와 겹친다: {clashes}")
+    # 읽기만 하는 포인트가 소켓 영역에 있어도 동작은 하지만 이름이 갈려 혼란스럽다
+    for point in settings.holding:
+        for socket in sockets:
+            if socket.base <= point.register < socket.end:
+                logger.warning(
+                    "holding 포인트 %s(%s) 가 소켓 %s 영역(%s = holding %d~%d) 안에 있다",
+                    point.name, point.addr, socket.name, socket.s_range, socket.base, socket.end - 1,
+                )
+
+
 def _sample(kind: RegisterKind, point: MemoryMapPoint, value: Value | None = None, error: str | None = None) -> Sample:
     return Sample(name=point.name, kind=kind, addr=point.addr, type=point.point_type, value=value, error=error)
+
+
+def _socket_samples(
+    socket: SocketSetup, samples: dict[str, Sample], blocks: bytes | None = None, error: str | None = None
+) -> None:
+    """소켓 result 를 Sample 로 담는다. addr 는 레지스터에 걸칠 수 있어 HI6 표기(S2008)로 둔다."""
+    for p in socket.points:
+        samples[p.name] = Sample(
+            name=p.name,
+            kind=RegisterKind.HOLDING,
+            addr=f"S{socket.s_block + p.offset:04d}",
+            type=p.catalog_type.point_type,
+            value=decode_point(p, blocks) if blocks is not None else None,
+            error=error,
+        )
+
+
+def _plan_sockets(sockets: tuple[SocketSetup, ...]) -> tuple[tuple[SocketSetup, ...], ...]:
+    groups: list[list[SocketSetup]] = []
+    for socket in sorted(sockets, key=lambda s: s.base):
+        if groups and groups[-1][-1].end == socket.base and socket.end - groups[-1][0].base <= MAX_READ_REGISTERS:
+            groups[-1].append(socket)
+        else:
+            groups.append([socket])
+    return tuple(tuple(g) for g in groups)
 
 
 def _plan(kind: RegisterKind, points: Iterable[MemoryMapPoint], max_gap: int) -> list[ReadRequest]:
