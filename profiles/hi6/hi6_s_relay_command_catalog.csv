@@ -61,28 +61,20 @@
 176,GET_UCRD_INFO,data,8,f4,y,1,decimal,,사용자좌표계 데이터 Y값
 176,GET_UCRD_INFO,data,12,f4,z,1,decimal,,사용자좌표계 데이터 Z값
 1000,GET_CIFX_STATUS,param,2,s1,slot_no,1,decimal,,Slot 번호 = 1~3
-1000,GET_CIFX_STATUS,param,2,s1,slot_no,1,decimal,,Slot 번호 = 1~3
-1000,GET_CIFX_STATUS,param,2,s1,slot_no,1,decimal,,Slot 번호 = 1~3
-1000,GET_CIFX_STATUS,param,2,s1,slot_no,1,decimal,,Slot 번호 = 1~3
-1000,GET_CIFX_STATUS,param,2,s1,slot_no,1,decimal,,Slot 번호 = 1~3
-1000,GET_CIFX_STATUS,param,3,s1,status_group,1,decimal,,상태 1
-1000,GET_CIFX_STATUS,param,3,s1,status_group,1,decimal,,상태 2
-1000,GET_CIFX_STATUS,param,3,s1,status_group,1,decimal,,상태 3
-1000,GET_CIFX_STATUS,param,3,s1,status_group,1,decimal,,상태 4
-1000,GET_CIFX_STATUS,param,3,s1,status_group,1,decimal,,상태 5
+1000,GET_CIFX_STATUS,param,3,s1,status_group,1,decimal,,상태 그룹 1~5 (그룹마다 result 배치가 다르다)
 1000,GET_CIFX_STATUS,data,4,s4,channel_status,1,binary,,채널 상태
 1000,GET_CIFX_STATUS,data,4,s1,input_handshake_mode,1,binary,,Input Data Handshake Mode
-1000,GET_CIFX_STATUS,data,4,byte[16],reserved,1,decimal,,Reserved
+1000,GET_CIFX_STATUS,data,4,byte[16],reserved_1,1,decimal,,Reserved
 1000,GET_CIFX_STATUS,data,4,s4,slave_communication_status,1,binary,,슬레이브 통신 상태; 1=OK
-1000,GET_CIFX_STATUS,data,4,s4,reserved,1,decimal,,Reserved
+1000,GET_CIFX_STATUS,data,4,s4,reserved_2,1,decimal,,Reserved
 1000,GET_CIFX_STATUS,data,6,s1,output_handshake_mode,1,binary,,Output Data Handshake Mode
 1000,GET_CIFX_STATUS,data,8,s4,communication_status,1,binary,,"통신 상태; 0=Unknown,1=Not Configured,2=Stop,3=Idle,4=Operate"
 1000,GET_CIFX_STATUS,data,8,s4,host_system_watchdog,1,decimal,,Host System Watchdog
-1000,GET_CIFX_STATUS,data,8,s4,reserved,1,decimal,,Reserved
-1000,GET_CIFX_STATUS,data,8,byte[12],reserved,1,decimal,,Reserved
+1000,GET_CIFX_STATUS,data,8,s4,reserved_3,1,decimal,,Reserved
+1000,GET_CIFX_STATUS,data,8,byte[12],reserved_4,1,decimal,,Reserved
 1000,GET_CIFX_STATUS,data,12,s4,communication_error_code,1,hex,,"통신 에러 코드; 0=정상, 그외=Error Code (32Bit Hexa)"
 1000,GET_CIFX_STATUS,data,12,s4,communication_error_count,1,decimal,,통신에러 누적 횟수
-1000,GET_CIFX_STATUS,data,12,s4,reserved,1,decimal,,Reserved
+1000,GET_CIFX_STATUS,data,12,s4,reserved_5,1,decimal,,Reserved
 1000,GET_CIFX_STATUS,data,16,s2,status_diagnosis_version,1,binary,,상태 진단 버전
 1000,GET_CIFX_STATUS,data,16,s4,normal_slave_count,1,decimal,,정상동작 슬레이브 수
 1000,GET_CIFX_STATUS,data,17,s1,input_handshake_error,1,binary,,Input Data Handshake Error

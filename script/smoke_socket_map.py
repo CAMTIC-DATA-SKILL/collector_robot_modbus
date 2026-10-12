@@ -33,12 +33,19 @@ from model import SOCKET_BLOCKS, CatalogPoint, CommandCatalog, CommandDef
 
 EXAMPLE_CATALOG = ROOT / "docs" / "command_catalog.example.csv"
 PROFILES = ROOT / "profiles"
-HI6_MAP = PROFILES / "hi6" / "hi6_s_relay_memory_map.json"
 HI6_S_RELAY_BASE = 24000
 
 
 def _sockets(*entries: dict[str, Any], **top: Any) -> dict[str, Any]:
     return {"s_relay_base": HI6_S_RELAY_BASE, **top, "sockets": list(entries)}
+
+
+def _axis_sockets() -> dict[str, Any]:
+    """손으로 옮겨 두었던 holding 25000~25009 를 GET_AXIS_INFO 소켓 두 개(1~3축, 4~6축)로 옮긴 맵."""
+    return _sockets(
+        {"name": "axis_1_3", "s_block": 2000, "command": "GET_AXIS_INFO", "params": [1, 1]},
+        {"name": "axis_4_6", "s_block": 2020, "command": "GET_AXIS_INFO", "params": [1, 4]},
+    )
 
 
 class FakeHi6:
@@ -191,7 +198,7 @@ def run_builtin_suite(runner: SmokeRunner) -> None:
         return m.describe_plan()
 
     def hi6_profile_matches_manual_map() -> str:
-        m = MemoryMap.from_json(HI6_MAP, catalog=catalog)
+        m = MemoryMap.from_dict(_axis_sockets(), catalog=catalog)
         axis_1_3, axis_4_6 = m.sockets
         # 손으로 옮겨 두었던 holding 25000~25009 (command, params1_type, start_axis, 공란, axis_1~3) 와 같은 번지여야 한다
         expect([axis_1_3.base + p.offset // 2 for p in axis_1_3.points], [25004, 25006, 25008])
@@ -200,7 +207,7 @@ def run_builtin_suite(runner: SmokeRunner) -> None:
         return m.describe_plan().replace("\n", " | ")
 
     def read_cycle() -> str:
-        m = MemoryMap.from_json(HI6_MAP, catalog=catalog)
+        m = MemoryMap.from_dict(_axis_sockets(), catalog=catalog)
         device = FakeHi6()
         # 이웃한 두 소켓(S2000, S2020)은 한 요청으로 읽는다
         expect([(g[0].base, len(g)) for g in m.socket_plan], [(25000, 2)])

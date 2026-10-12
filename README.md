@@ -363,9 +363,9 @@ cp profiles/hi6/hi6_s_relay_memory_map.json memory_map.json   # 소켓 배치와
 python script/smoke_socket_map.py --catalog profiles/hi6/hi6_s_relay_command_catalog.csv --map memory_map.json
 ```
 
-예시는 손으로 옮겨 두었던 `holding 25000~25009`(command, params1_type, start_axis, 공란, axis_1~3)를
-`GET_AXIS_INFO`(120) 소켓으로 바꾼 것이다. 같은 command 를 `start_axis_no` 만 바꿔
-`S2000`(1~3축), `S2020`(4~6축) 두 소켓에 쓴다.
+예시는 `GET_AXIS_INFO`(120) 하나를 `type`(축각도, 베이스좌표, 축속도, 부하율, 엔코더 온도 등)과
+`start_axis_no`(1 = 1~3축, 4 = 4~6축)만 바꿔 소켓 22개(`S2000`~`S2439`, holding 25000~25219)에 쓴다.
+소켓은 20 block 씩 떨어뜨려 배치한다.
 
 | 파일 | 내용 | 범위 |
 | --- | --- | --- |
