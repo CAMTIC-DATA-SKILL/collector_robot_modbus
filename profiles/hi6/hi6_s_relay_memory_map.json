@@ -1,0 +1,31 @@
+{
+  "word_endian": "le",
+  "max_gap": 8,
+  "format": "dec",
+  "s_relay_base": 24000,
+  "holding": [],
+  "sockets": [
+    {"name": "axis_angle_01_03", "s_block": 2000, "command": "GET_AXIS_INFO", "params": [1, 1]},
+    {"name": "axis_angle_04_06", "s_block": 2020, "command": "GET_AXIS_INFO", "params": [1, 4]},
+    {"name": "base_pos_01_03", "s_block": 2040, "command": "GET_AXIS_INFO", "params": [2, 1]},
+    {"name": "base_pos_04_06", "s_block": 2060, "command": "GET_AXIS_INFO", "params": [2, 4]},
+    {"name": "user_pos_01_03", "s_block": 2080, "command": "GET_AXIS_INFO", "params": [3, 1]},
+    {"name": "user_pos_04_06", "s_block": 2100, "command": "GET_AXIS_INFO", "params": [3, 4]},
+    {"name": "axis_speed_01_03", "s_block": 2120, "command": "GET_AXIS_INFO", "params": [6, 1]},
+    {"name": "axis_speed_04_06", "s_block": 2140, "command": "GET_AXIS_INFO", "params": [6, 4]},
+    {"name": "motor_speed_01_03", "s_block": 2160, "command": "GET_AXIS_INFO", "params": [7, 1]},
+    {"name": "motor_speed_04_06", "s_block": 2180, "command": "GET_AXIS_INFO", "params": [7, 4]},
+    {"name": "motor_rpm_01_03", "s_block": 2200, "command": "GET_AXIS_INFO", "params": [8, 1]},
+    {"name": "motor_rpm_04_06", "s_block": 2220, "command": "GET_AXIS_INFO", "params": [8, 4]},
+    {"name": "load_factor_I_Ir_01_03", "s_block": 2240, "command": "GET_AXIS_INFO", "params": [10, 1]},
+    {"name": "load_factor_I_Ir_04_06", "s_block": 2260, "command": "GET_AXIS_INFO", "params": [10, 4]},
+    {"name": "load_factor_I_Ip__01_03", "s_block": 2280, "command": "GET_AXIS_INFO", "params": [11, 1]},
+    {"name": "load_factor_I_Ip__04_06", "s_block": 2300, "command": "GET_AXIS_INFO", "params": [11, 4]},
+    {"name": "load_factor_sequence_01_03", "s_block": 2320, "command": "GET_AXIS_INFO", "params": [12, 1]},
+    {"name": "load_factor_sequence_04_06", "s_block": 2340, "command": "GET_AXIS_INFO", "params": [12, 4]},
+    {"name": "encoder_temp_01_03", "s_block": 2360, "command": "GET_AXIS_INFO", "params": [15, 1]},
+    {"name": "encoder_temp_04_06", "s_block": 2380, "command": "GET_AXIS_INFO", "params": [15, 4]},
+    {"name": "axis_dist_sum_01_03", "s_block": 2400, "command": "GET_AXIS_INFO", "params": [18, 1]},
+    {"name": "axis_dist_sum_04_06", "s_block": 2420, "command": "GET_AXIS_INFO", "params": [18, 4]}
+  ]
+}

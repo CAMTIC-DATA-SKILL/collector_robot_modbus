@@ -38,6 +38,7 @@ from model import (
     RegisterKind,
     Sample,
     SocketEntry,
+    SocketSample,
     SocketSetup,
     Value,
     ValueFormat,
@@ -47,9 +48,10 @@ from model import (
 from .base_client import BaseModbusClient
 from .exceptions import ModbusClientError, ModbusErrorCode
 from .sockets import (
-    decode_point,
+    blocks_to_registers,
     describe_socket,
     expand_socket,
+    read_socket,
     registers_to_blocks,
     setup_mismatch,
     write_socket,
@@ -92,24 +94,27 @@ class MemoryMap:
         return cls(MemoryMapSettings.model_validate(raw), catalog=catalog)
 
     def read(self, client: BaseModbusClient) -> list[Sample]:
-        """계획된 요청으로 전체 포인트를 읽는다. 연결 계열 에러만 예외로 올리고 나머지는 Sample.error 에 담는다.
-
-        소켓은 command / parameter 자리까지 같이 읽으므로 매 읽기가 곧 전제조건 확인이다.
-        기대값과 다르면(재부팅으로 초기화 등) 다시 쓰고, 그 소켓 result 는 이번 읽기만 E-3101 로 낸다.
-        """
+        """계획된 요청으로 holding / input 포인트를 읽는다. 연결 계열 에러만 예외로 올리고 나머지는 Sample.error 에 담는다."""
         samples: dict[str, Sample] = {}
         plan: list[ReadRequest] = []
         for request in self.plan:
             plan += self._execute(client, request, samples)
         # 범위 거부로 쪼갠 계획은 다음 읽기부터 그대로 쓴다
         self.plan = tuple(plan)
+        return [samples[p.name] for kind in RegisterKind for p in self.settings.points_of(kind)]
+
+    def read_sockets(self, client: BaseModbusClient) -> list[SocketSample]:
+        """소켓마다 result 묶음 하나를 낸다. 연결 계열 에러만 예외로 올리고 나머지는 SocketSample.error 에 담는다.
+
+        command / parameter 자리까지 같이 읽으므로 매 읽기가 곧 전제조건 확인이다.
+        기대값과 다르면(재부팅으로 초기화 등) 다시 쓰고, 그 소켓은 이번 읽기만 E-3101 로 낸다.
+        """
+        results: dict[str, SocketSample] = {}
         socket_plan: list[tuple[SocketSetup, ...]] = []
         for group in self.socket_plan:
-            socket_plan += self._read_sockets(client, group, samples)
+            socket_plan += self._read_sockets(client, group, results)
         self.socket_plan = tuple(socket_plan)
-        names = [p.name for kind in RegisterKind for p in self.settings.points_of(kind)]
-        names += [p.name for s in self.sockets for p in s.points]
-        return [samples[n] for n in names]
+        return [results[s.name] for s in self.sockets]
 
     @staticmethod
     def values(samples: list[Sample]) -> dict[str, Value]:
@@ -173,7 +178,7 @@ class MemoryMap:
         return expand_socket(entry, self.catalog, self.settings.s_relay_base)
 
     def _read_sockets(
-        self, client: BaseModbusClient, group: tuple[SocketSetup, ...], samples: dict[str, Sample]
+        self, client: BaseModbusClient, group: tuple[SocketSetup, ...], results: dict[str, SocketSample]
     ) -> list[tuple[SocketSetup, ...]]:
         start = group[0].base
         try:
@@ -183,27 +188,24 @@ class MemoryMap:
                 raise
             if e.code is ModbusErrorCode.ADDR_OUT_OF_RANGE and len(group) > 1:
                 logger.warning("범위 거부로 소켓 요청 분할: holding %d~%d -> %d개", start, group[-1].end - 1, len(group))
-                return [g for s in group for g in self._read_sockets(client, (s,), samples)]
+                return [g for s in group for g in self._read_sockets(client, (s,), results)]
             for socket in group:
-                _socket_samples(socket, samples, error=e.code.value)
+                results[socket.name] = read_socket(socket, error=e.code.value)
             return [group]
         for socket in group:
             offset = socket.base - start
-            self._check_socket(client, socket, registers[offset : offset + socket.end - socket.base], samples)
+            blocks = registers_to_blocks(registers[offset : offset + socket.end - socket.base])
+            results[socket.name] = self._check_socket(client, socket, blocks)
         return [group]
 
-    def _check_socket(
-        self, client: BaseModbusClient, socket: SocketSetup, registers: list[int], samples: dict[str, Sample]
-    ) -> None:
-        blocks = registers_to_blocks(registers)
+    def _check_socket(self, client: BaseModbusClient, socket: SocketSetup, blocks: bytes) -> SocketSample:
         mismatch = setup_mismatch(socket, blocks)
         if not mismatch:
-            _socket_samples(socket, samples, blocks=blocks)
-            return
+            return read_socket(socket, blocks)
         logger.warning(
             "소켓 %s(%s) command/parameter 불일치 S%04d~ 현재 %s, 기대 %s -> 다시 쓴다",
             socket.name, socket.s_range, socket.s_block + mismatch[0],
-            registers[: len(socket.setup_registers)], list(socket.setup_registers),
+            blocks_to_registers(blocks)[: len(socket.setup_registers)], list(socket.setup_registers),
         )
         try:
             write_socket(client, socket)
@@ -211,9 +213,8 @@ class MemoryMap:
             if e.code.requires_reconnect:
                 raise
             logger.error("소켓 %s 쓰기 실패: %s", socket.name, e)
-            _socket_samples(socket, samples, error=e.code.value)
-            return
-        _socket_samples(socket, samples, error=ModbusErrorCode.SOCKET_REWRITTEN.value)
+            return read_socket(socket, blocks, error=e.code.value)
+        return read_socket(socket, blocks, error=ModbusErrorCode.SOCKET_REWRITTEN.value)
 
     def _execute(self, client: BaseModbusClient, request: ReadRequest, samples: dict[str, Sample]) -> list[ReadRequest]:
         try:
@@ -307,10 +308,6 @@ def _check_sockets(sockets: tuple[SocketSetup, ...], settings: MemoryMapSettings
                 f"소켓 {a.name}({a.s_range}) 와 {b.name}({b.s_range}) 의 번지가 겹친다 "
                 f"(소켓 한 자리 = {SOCKET_BLOCKS} block 이므로 s_block 은 {SOCKET_BLOCKS} 이상 떨어져야 한다)"
             )
-    point_names = {p.name for kind in RegisterKind for p in settings.points_of(kind)}
-    clashes = sorted(point_names & {p.name for s in sockets for p in s.points})
-    if clashes:
-        raise ValueError(f"소켓 result 이름이 holding/input 포인트와 겹친다: {clashes}")
     # 읽기만 하는 포인트가 소켓 영역에 있어도 동작은 하지만 이름이 갈려 혼란스럽다
     for point in settings.holding:
         for socket in sockets:
@@ -323,21 +320,6 @@ def _check_sockets(sockets: tuple[SocketSetup, ...], settings: MemoryMapSettings
 
 def _sample(kind: RegisterKind, point: MemoryMapPoint, value: Value | None = None, error: str | None = None) -> Sample:
     return Sample(name=point.name, kind=kind, addr=point.addr, type=point.point_type, value=value, error=error)
-
-
-def _socket_samples(
-    socket: SocketSetup, samples: dict[str, Sample], blocks: bytes | None = None, error: str | None = None
-) -> None:
-    """소켓 result 를 Sample 로 담는다. addr 는 레지스터에 걸칠 수 있어 HI6 표기(S2008)로 둔다."""
-    for p in socket.points:
-        samples[p.name] = Sample(
-            name=p.name,
-            kind=RegisterKind.HOLDING,
-            addr=f"S{socket.s_block + p.offset:04d}",
-            type=p.catalog_type.point_type,
-            value=decode_point(p, blocks) if blocks is not None else None,
-            error=error,
-        )
 
 
 def _plan_sockets(sockets: tuple[SocketSetup, ...]) -> tuple[tuple[SocketSetup, ...], ...]:

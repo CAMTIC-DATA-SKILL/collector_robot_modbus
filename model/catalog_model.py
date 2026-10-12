@@ -13,7 +13,7 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
-from .memory_map_model import MAX_REGISTER, SOCKET_BLOCKS, SOCKET_REGISTERS, PointType, ValueFormat
+from .memory_map_model import MAX_REGISTER, SOCKET_BLOCKS, SOCKET_REGISTERS, ValueFormat
 
 # command 가 차지하는 block 수 (소켓 offset 0~1)
 COMMAND_BLOCKS = 2
@@ -53,24 +53,18 @@ class CatalogType(str, Enum):
     def is_float(self) -> bool:
         return self.struct_format in "fd"
 
-    @property
-    def point_type(self) -> PointType:
-        """메모리 맵(bit 수) 표기. 수집 결과에는 이 값을 실어 "u8" 이 8 bit / 8 byte 로 엇갈리지 않게 한다."""
-        return _TYPE_SPECS[self][2]
-
-
-_TYPE_SPECS: dict[CatalogType, tuple[int, str, PointType]] = {
-    CatalogType.S1: (1, "b", PointType.I8),
-    CatalogType.S2: (2, "h", PointType.I16),
-    CatalogType.S4: (4, "i", PointType.I32),
-    CatalogType.S8: (8, "q", PointType.I64),
-    CatalogType.U1: (1, "B", PointType.U8),
-    CatalogType.U2: (2, "H", PointType.U16),
-    CatalogType.U4: (4, "I", PointType.U32),
-    CatalogType.U8: (8, "Q", PointType.U64),
-    CatalogType.F4: (4, "f", PointType.F32),
-    CatalogType.F8: (8, "d", PointType.F64),
-    CatalogType.BYTE: (1, "B", PointType.U8),
+_TYPE_SPECS: dict[CatalogType, tuple[int, str]] = {
+    CatalogType.S1: (1, "b"),
+    CatalogType.S2: (2, "h"),
+    CatalogType.S4: (4, "i"),
+    CatalogType.S8: (8, "q"),
+    CatalogType.U1: (1, "B"),
+    CatalogType.U2: (2, "H"),
+    CatalogType.U4: (4, "I"),
+    CatalogType.U8: (8, "Q"),
+    CatalogType.F4: (4, "f"),
+    CatalogType.F8: (8, "d"),
+    CatalogType.BYTE: (1, "B"),
 }
 
 
@@ -184,7 +178,6 @@ class SocketSetup(BaseModel):
     """메모리 맵 SocketEntry 를 카탈로그로 풀어 둔 결과.
 
     setup_blocks 는 소켓 20 block 중 command·parameter 자리에 있어야 하는 값이고 나머지는 None 이다 (전제조건).
-    points 는 result 값을 "{socket}.{point}" 이름으로 바꿔 둔 것이다. offset 은 그대로 소켓 기준 block 이다.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -194,8 +187,13 @@ class SocketSetup(BaseModel):
     # s_block 의 Modbus 레지스터
     base: int
     command: CommandDef
+    # 카탈로그 param 이름 → 메모리 맵에 적은 값
+    params: dict[str, int | float | str]
     setup_blocks: tuple[int | None, ...]
-    points: tuple[CatalogPoint, ...]
+
+    @property
+    def points(self) -> tuple[CatalogPoint, ...]:
+        return self.command.data
 
     @property
     def end(self) -> int:

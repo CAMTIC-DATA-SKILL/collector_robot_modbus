@@ -87,7 +87,22 @@ class MsgSampleDTO(BaseModel):
     error: str | None = None
 
 
+class MsgSocketDTO(BaseModel):
+    """SocketSample 과 같은 필드. 소켓(command) 하나의 result 묶음."""
+
+    name: str
+    s_block: int
+    command: int
+    command_name: str
+    params: dict[str, int | float | str]
+    value: dict[str, Value] | None = None
+    blocks: list[int] | None = None
+    error: str | None = None
+
+
 class MsgDataDTO(BaseModel):
     device_key: str
     sample_ms: int
     samples: list[MsgSampleDTO]
+    # 메모리 맵에 sockets 가 없으면 빈 목록
+    sockets: list[MsgSocketDTO] = []

@@ -14,15 +14,13 @@ from model import (
     CatalogPoint,
     CommandCatalog,
     SocketEntry,
+    SocketSample,
     SocketSetup,
     Value,
     ValueFormat,
 )
 
 from .base_client import BaseModbusClient
-
-# 생성되는 result 이름 "{socket}.{point}" 의 구분자
-SOCKET_NAME_SEPARATOR = "."
 
 
 def registers_to_blocks(registers: Sequence[int]) -> bytes:
@@ -83,8 +81,8 @@ def expand_socket(entry: SocketEntry, catalog: CommandCatalog, s_relay_base: int
         s_block=entry.s_block,
         base=base,
         command=command,
+        params={p.name: value for p, value in zip(command.params, entry.params)},
         setup_blocks=tuple(setup),
-        points=tuple(p.model_copy(update={"name": f"{entry.name}{SOCKET_NAME_SEPARATOR}{p.name}"}) for p in command.data),
     )
 
 
@@ -101,14 +99,29 @@ def write_socket(client: BaseModbusClient, socket: SocketSetup) -> None:
         client.write_registers(socket.base + 1, params)
 
 
+def read_socket(socket: SocketSetup, blocks: bytes | None = None, error: str | None = None) -> SocketSample:
+    """blocks 가 있고 error 가 없을 때만 result 를 디코딩한다."""
+    return SocketSample(
+        name=socket.name,
+        s_block=socket.s_block,
+        command=socket.command.command,
+        command_name=socket.command.command_name,
+        params=socket.params,
+        value={p.name: decode_point(p, blocks) for p in socket.points} if blocks is not None and error is None else None,
+        blocks=list(blocks) if blocks is not None else None,
+        error=error,
+    )
+
+
 def describe_socket(socket: SocketSetup) -> str:
     command = socket.command
     setup_end = socket.base + len(socket.setup_registers) - 1
+    params = ", ".join(f"{k}={v!r}" for k, v in socket.params.items())
     points = ", ".join(f"{p.name}(S{socket.s_block + p.offset:04d} {p.type})" for p in socket.points)
     return (
         f"socket {socket.name} {socket.s_range} -> holding {socket.base}~{socket.end - 1} "
-        f"{command.command_name}(={command.command}): setup {socket.base}~{setup_end}={list(socket.setup_registers)}, "
-        f"result: {points}"
+        f"{command.command_name}(={command.command})({params}): "
+        f"setup {socket.base}~{setup_end}={list(socket.setup_registers)}, result: {points}"
     )
 
 

@@ -22,7 +22,7 @@ docs/
 profiles/
 └── hi6/                 # 로봇 모델별 프로파일
     ├── hi6_s_relay_command_catalog.csv  # HI6 S relay command 카탈로그 (매뉴얼 전사)
-    └── memory_map.example.json          # 이 카탈로그를 쓰는 메모리 맵 예시 (s_relay_base, sockets)
+    └── hi6_s_relay_memory_map.json      # 이 카탈로그를 쓰는 메모리 맵 예시 (s_relay_base, sockets)
 core/
 ├── modbus_client/       # Modbus 클라이언트 (BaseModbusClient ← ModbusTcpClient / ModbusRtuClient), 메모리 맵 읽기, 소켓 block 코덱
 └── zeromq_client/       # 게이트웨이 IPC (PUB + SUB 파사드 ZeroMqClient, 토픽 조립)
@@ -69,7 +69,7 @@ collector-plc 와 같은 방식이다. 소켓은 PUB + SUB 두 개이고 프레�
 | collector → gateway | PUB (`ZMQ_PUB_ENDPOINT`, bind) | `collector.robot.{DEVICE_KEY}.{msg_type}` | `data` / `health` / `ack` |
 | gateway → collector | SUB (`ZMQ_SUB_ENDPOINT`, connect) | `middleware.gateway.cmd_` prefix | `cmd_r` / `cmd_w` |
 
-- `data`: 매 주기 읽기 결과. `samples[]` 는 `Sample` 과 같은 필드(`name` `kind` `addr` `type` `value` `error`)이고 실패 포인트는 `value=null`, `error` 에 코드가 남는다.
+- `data`: 매 주기 읽기 결과. 고정 포인트는 `samples[]`, 소켓은 `sockets[]` 로 나간다 ([data 메시지](#data-메시지) 참고).
 - `health`: Modbus 연결 상태가 바뀔 때 (`device_ok`, 실패 시 `reason` 에 `E-1001` 등). 연결 실패 중에는 재시도마다 낸다.
 - `ack`: cmd 처리 결과. cmd 는 아직 처리하지 않으므로 `status=rejected`, `code=E-4102`(CMD_UNSUPPORTED_ACTION) 로 응답한다.
   cmd 는 모든 collector 에 같은 토픽으로 오므로 헤더 `collector_address` 가 `DEVICE_KEY` 와 다르면 무시한다.
@@ -89,6 +89,90 @@ python -m core.zeromq_client --device-key robot-1 --cmd cmd_r --action SET_SCAN
 ```
 
 환경 변수 목록과 기본값은 `.env.example` 참고. 코드에서는 `from config import settings` 로만 참조한다.
+
+### data 메시지
+
+토픽 `collector.robot.{DEVICE_KEY}.data`, 헤더(`ProtocolHeaderDTO`)의 `msg_body` 가 `MsgDataDTO` 다.
+
+```json
+{
+  "msg_id": "0b6f6c2e-6a4f-4f57-9d8e-2c1f0f6a7b3d",
+  "gateway_address": "gateway",
+  "collector_address": "robot-1",
+  "msg_type": "data",
+  "timestamp_ms": 1760236380000,
+  "msg_body": {
+    "device_key": "robot-1",
+    "sample_ms": 1760236380000,
+    "samples": [
+      {"name": "temperature",     "kind": "holding", "addr": "1",      "type": "i16", "value": -2.0,  "error": null},
+      {"name": "battery_voltage", "kind": "input",   "addr": "100",    "type": "f32", "value": null,  "error": "E-2203"}
+    ],
+    "sockets": [
+      {
+        "name": "axis_4_6",
+        "s_block": 2020,
+        "command": 120,
+        "command_name": "GET_AXIS_INFO",
+        "params": {"type": 1, "start_axis_no": 4},
+        "value": {"axis_0_value": 40.0, "axis_1_value": 50.5, "axis_2_value": 60.0},
+        "blocks": [120, 0, 1, 0, 4, 0, 0, 0, 0, 0, 32, 66, 0, 0, 74, 66, 0, 0, 112, 66],
+        "error": null
+      },
+      {
+        "name": "task_0",
+        "s_block": 2040,
+        "command": 100,
+        "command_name": "GET_TASK_INFO",
+        "params": {"task_no": 0},
+        "value": null,
+        "blocks": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "error": "E-3101"
+      }
+    ]
+  }
+}
+```
+
+`msg_body`
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| `device_key` | str | `DEVICE_KEY` |
+| `sample_ms` | int | 읽은 시각 (epoch ms) |
+| `samples` | list | 메모리 맵 `holding` / `input` 포인트. 맵 순서(holding → input) |
+| `sockets` | list | 메모리 맵 `sockets` 의 소켓마다 하나. 맵 순서. 소켓이 없으면 `[]` |
+
+`samples[]` (포인트 하나)
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| `name` | str | 맵의 포인트 이름 |
+| `kind` | `"holding"` / `"input"` | 맵 섹션 |
+| `addr` | str | 맵의 addr (`1`, `100.8~F`) |
+| `type` | str | 맵의 type (배열이면 원소 타입) |
+| `value` | int / float / str / list / null | 디코딩 값. `hex` / `bin` 이면 `"0xFF38"` / `"0b0101"` 문자열, 배열이면 list. 실패하면 `null` |
+| `error` | str / null | 실패 시 오류 코드 |
+
+`sockets[]` (소켓 = command 하나의 result 묶음)
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| `name` | str | 맵의 소켓 이름 |
+| `s_block` | int | 소켓 시작 S block (`2020` = `S2020`) |
+| `command` | int | 카탈로그 command 번호 |
+| `command_name` | str | 카탈로그 command 이름 |
+| `params` | object | 카탈로그 param 이름 → 맵에 적은 값. 같은 command 라도 이 값에 따라 `value` 의 의미가 달라진다 (예: `start_axis_no=4` 면 `axis_0_value` 는 4축) |
+| `value` | object / null | 카탈로그 data 이름 → 디코딩 값. 값의 모양은 `samples[].value` 와 같다. `error` 가 있으면 `null` |
+| `blocks` | list[int] / null | 읽은 20 block 원본(0~255, `blocks[0]` = `S{s_block}`). 카탈로그 전사 대조용. `E-3101` 이면 다시 쓰기 전에 읽은 값, 읽기 실패면 `null` |
+| `error` | str / null | 소켓 단위 오류 코드 |
+
+| 오류 코드 | 의미 |
+| --- | --- |
+| `E-1xxx` | 연결 오류. data 를 내지 않고 `health` 로 알린 뒤 재연결한다 |
+| `E-2001` / `E-2002` | 읽기 / 쓰기 실패 (`E-2002` 는 소켓 다시 쓰기를 장비가 거부) |
+| `E-2203` | 장비가 주소를 거부 (Illegal Data Address) |
+| `E-3101` | 소켓 command·parameter 가 설정과 달라(재부팅 등) 다시 썼다. 다음 주기부터 `value` 가 나온다 |
 
 ## 스모크 테스트
 
@@ -274,7 +358,7 @@ layout 은 로봇 모델마다 정해져 있고 command 수가 많으므로 메�
 HI6 는 `profiles/hi6/` 의 예시에서 시작한다.
 
 ```bash
-cp profiles/hi6/memory_map.example.json memory_map.json   # 소켓 배치와 parameter 값을 현장에 맞춘다
+cp profiles/hi6/hi6_s_relay_memory_map.json memory_map.json   # 소켓 배치와 parameter 값을 현장에 맞춘다
 # .env: COMMAND_CATALOG_FILE=profiles/hi6/hi6_s_relay_command_catalog.csv
 python script/smoke_socket_map.py --catalog profiles/hi6/hi6_s_relay_command_catalog.csv --map memory_map.json
 ```
@@ -334,13 +418,13 @@ Modbus 레지스터(HI6 는 24000)이고 `sockets` 를 쓰면 반드시 적는�
 ```
 
 `s_block` 은 매뉴얼 표기 `S2000` 의 숫자를 그대로 적는다. 짝수여야 하고 소켓끼리 20 이상 떨어져야 한다.
-result 값은 `{소켓 이름}.{포인트 이름}` 으로 펼쳐지므로 같은 command 를 여러 소켓에 써도 이름이 겹치지 않는다.
-`describe_plan()` 은 S 범위와 Modbus 범위, result 값마다 S 번호를 같이 보여 주므로 매뉴얼과 바로 대조할 수 있다.
+결과는 소켓 이름별 묶음으로 나가므로 같은 command 를 여러 소켓에 써도 섞이지 않는다 ([소켓 수집 동작](#소켓-수집-동작) 참고).
+`describe_plan()` 은 S 범위와 Modbus 범위, parameter 값, result 값마다 S 번호를 같이 보여 주므로 매뉴얼과 바로 대조할 수 있다.
 `setup` 은 command·parameter 자리를 덮는 레지스터 값이고, parameter 사이에 낀 result 자리는 0 으로 둔다.
 
 ```
-socket axis_1_3 S2000~S2019 -> holding 25000~25009 GET_AXIS_INFO(=120): setup 25000~25002=[120, 1, 1], result: axis_1_3.axis_0_value(S2008 f4), axis_1_3.axis_1_value(S2012 f4), axis_1_3.axis_2_value(S2016 f4)
-socket tool S2040~S2059 -> holding 25020~25029 GET_TOOL_INFO(=174): setup 25020~25021=[174, 515], result: tool.tool_weight(S2044 f4), ...
+socket axis_1_3 S2000~S2019 -> holding 25000~25009 GET_AXIS_INFO(=120)(type=1, start_axis_no=1): setup 25000~25002=[120, 1, 1], result: axis_0_value(S2008 f4), axis_1_value(S2012 f4), axis_2_value(S2016 f4)
+socket tool S2040~S2059 -> holding 25020~25029 GET_TOOL_INFO(=174)(tool_no=3, tool_data_type=2): setup 25020~25021=[174, 515], result: tool_weight(S2044 f4), ...
 ```
 
 `tool` 의 `515` 는 1 block parameter 두 개가 한 레지스터에 들어간 값이다 (`tool_no=3` 이 .L, `tool_data_type=2` 가 .H → `3 + 2×256`).
@@ -368,22 +452,18 @@ python script/smoke_socket_map.py --catalog profiles/hi6/hi6_s_relay_command_cat
 
 ### 소켓 수집 동작
 
-`sockets` 에 적은 소켓은 `holding` 에 다시 적지 않아도 `read()` 가 같이 읽는다.
+`sockets` 에 적은 소켓은 `holding` 에 다시 적지 않아도 `read_sockets()` 가 읽는다 (`read()` 는 holding / input 만).
 쓰기(command·parameter)와 읽기(result)가 소켓 한 줄로 정해진다.
 
 1. 소켓 10 레지스터를 통째로 읽는다. 붙어 있는 소켓(S2000, S2020, ...)은 한 요청으로 묶는다.
-2. command·parameter 자리가 설정값과 같으면 result 를 디코딩해 `{소켓}.{포인트}` 샘플로 낸다.
-3. 다르면(재부팅으로 초기화 등) **command 를 먼저, parameter 를 나중에** 다시 쓰고 그 소켓의 이번 샘플은 `E-3101` 로 낸다.
+2. command·parameter 자리가 설정값과 같으면 result 를 디코딩해 소켓마다 결과 하나로 낸다.
+3. 다르면(재부팅으로 초기화 등) **command 를 먼저, parameter 를 나중에** 다시 쓰고 그 소켓의 이번 결과는 `E-3101` 로 낸다.
    로봇이 result 를 계속 갱신하므로 다음 읽기부터 값이 나온다.
 
 읽을 때마다 command·parameter 자리도 같이 읽으므로 따로 확인 주기를 두지 않는다 (확인 주기 = `POLL_INTERVAL_SEC`).
-소켓 샘플의 `addr` 는 레지스터 경계에 걸칠 수 있어 HI6 표기(`S2008`)로,
-`type` 은 메모리 맵 표기(`f4` → `f32`, `s2` → `i16`, `u1`·`byte` → `u8`)로 낸다.
 
-| 코드 | 의미 |
-| --- | --- |
-| `E-3101` | 소켓 command·parameter 가 설정과 달라 다시 썼다. result 는 다음 읽기부터 유효 |
-| `E-2002` | 소켓 다시 쓰기 실패 (장비가 쓰기를 거부) |
+소켓 결과는 낱개 샘플로 풀지 않고 command 하나를 한 묶음으로 낸다. data 메시지 `msg_body` 에서 `samples`(holding / input)와
+나란히 `sockets` 목록으로 나간다. 필드와 오류 코드는 [data 메시지](#data-메시지) 참고.
 
 ### 맵 파일 나누기
 

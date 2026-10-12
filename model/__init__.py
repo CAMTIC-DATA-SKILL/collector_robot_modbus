@@ -22,10 +22,11 @@ from .protocol_model import (
     MsgDataDTO,
     MsgHealthDTO,
     MsgSampleDTO,
+    MsgSocketDTO,
     MsgTypeEnum,
     ProtocolHeaderDTO,
 )
-from .sample_model import Sample, Value
+from .sample_model import Sample, SocketSample, Value
 
 __all__ = [
     "COMMAND_BLOCKS",
@@ -47,6 +48,7 @@ __all__ = [
     "MsgDataDTO",
     "MsgHealthDTO",
     "MsgSampleDTO",
+    "MsgSocketDTO",
     "MsgTypeEnum",
     "PointType",
     "ProtocolHeaderDTO",
@@ -54,6 +56,7 @@ __all__ = [
     "RegisterKind",
     "Sample",
     "SocketEntry",
+    "SocketSample",
     "SocketSetup",
     "Value",
     "ValueFormat",

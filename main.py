@@ -1,4 +1,4 @@
-"""프로젝트 진입점. Modbus 장비의 메모리 맵 포인트를 주기적으로 읽어 ZeroMQ 로 게이트웨이에 보낸다.
+"""프로젝트 진입점. Modbus 장비의 메모리 맵 포인트와 소켓을 주기적으로 읽어 ZeroMQ 로 게이트웨이에 보낸다.
 
     python main.py
 
@@ -33,9 +33,11 @@ from model import (
     MsgDataDTO,
     MsgHealthDTO,
     MsgSampleDTO,
+    MsgSocketDTO,
     MsgTypeEnum,
     ProtocolHeaderDTO,
     Sample,
+    SocketSample,
 )
 
 logger = logging.getLogger("collector")
@@ -69,9 +71,11 @@ def load_memory_map() -> MemoryMap:
     return MemoryMap.from_json(*settings.memory_map_files, catalog=catalog)
 
 
-def report(samples: list[Sample]) -> None:
-    logger.info("%s", json.dumps(MemoryMap.values(samples), ensure_ascii=False))
-    errors = {s.name: s.error for s in samples if s.error}
+def report(samples: list[Sample], sockets: list[SocketSample]) -> None:
+    values: dict = MemoryMap.values(samples)
+    values.update({s.name: s.value for s in sockets if s.error is None})
+    logger.info("%s", json.dumps(values, ensure_ascii=False))
+    errors = {s.name: s.error for s in [*samples, *sockets] if s.error}
     if errors:
         logger.warning("read errors: %s", errors)
 
@@ -100,11 +104,12 @@ def emit_health(zmq: ZeroMqClient, *, device_ok: bool, reason: str | None = None
     emit(zmq, MsgTypeEnum.HEALTH, body)
 
 
-def emit_data(zmq: ZeroMqClient, samples: list[Sample]) -> None:
+def emit_data(zmq: ZeroMqClient, samples: list[Sample], sockets: list[SocketSample]) -> None:
     body = MsgDataDTO(
         device_key=settings.device_key,
         sample_ms=now_ms(),
         samples=[MsgSampleDTO.model_validate(s.model_dump()) for s in samples],
+        sockets=[MsgSocketDTO.model_validate(s.model_dump()) for s in sockets],
     )
     emit(zmq, MsgTypeEnum.DATA, body)
 
@@ -118,6 +123,7 @@ def collect(stop: threading.Event, memory_map: MemoryMap, zmq: ZeroMqClient) -> 
             try:
                 client.connect()
                 samples = memory_map.read(client)
+                sockets = memory_map.read_sockets(client)
             except ModbusClientError as e:
                 # MemoryMap.read 는 연결 계열 에러만 올리므로 끊고 기다렸다 다시 연결한다
                 logger.error("%s -> %.1fs 후 재연결", e, settings.reconnect_interval)
@@ -129,8 +135,8 @@ def collect(stop: threading.Event, memory_map: MemoryMap, zmq: ZeroMqClient) -> 
             if not device_ok:
                 emit_health(zmq, device_ok=True)
                 device_ok = True
-            report(samples)
-            emit_data(zmq, samples)
+            report(samples, sockets)
+            emit_data(zmq, samples, sockets)
             stop.wait(max(0.0, settings.poll_interval - (time.monotonic() - started)))
     finally:
         client.close()

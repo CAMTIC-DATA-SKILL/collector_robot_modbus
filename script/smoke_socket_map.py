@@ -1,7 +1,7 @@
 """소켓 command 카탈로그 / 메모리 맵 sockets 스모크 테스트. 장비 없이 돌고 Windows 에서도 실행된다.
 
 인자가 없으면 docs/command_catalog.example.csv 로 block 코덱, S relay 주소 변환, 펼치기, 병합, 거부 규칙을 점검하고
-profiles/*/ 의 카탈로그와 memory_map.example.json 이 읽히는지 본다.
+profiles/*/ 의 카탈로그와 같은 폴더의 *memory_map*.json 이 읽히는지 본다.
 --catalog / --map 을 주면 실제 파일을 읽어 검증하고 펼친 계획을 출력한다 (배포 전 확인용).
 
 예) python script/smoke_socket_map.py
@@ -33,6 +33,7 @@ from model import SOCKET_BLOCKS, CatalogPoint, CommandCatalog, CommandDef
 
 EXAMPLE_CATALOG = ROOT / "docs" / "command_catalog.example.csv"
 PROFILES = ROOT / "profiles"
+HI6_MAP = PROFILES / "hi6" / "hi6_s_relay_memory_map.json"
 HI6_S_RELAY_BASE = 24000
 
 
@@ -160,7 +161,7 @@ def run_builtin_suite(runner: SmokeRunner) -> None:
         expect(app.setup_registers, (140, 1, 2, 0, 8))
         expect(app.setup_blocks[6:8], (None, None))
         expect(hw.setup_registers, (170,))
-        expect([p.name for p in tool.points][:2], ["tool.tool_weight", "tool.tool_data_x"])
+        expect(tool.params, {"tool_no": 3, "tool_data_type": 2})
         return m.describe_plan().replace("\n", " | ")
 
     def merge() -> str:
@@ -190,7 +191,7 @@ def run_builtin_suite(runner: SmokeRunner) -> None:
         return m.describe_plan()
 
     def hi6_profile_matches_manual_map() -> str:
-        m = MemoryMap.from_json(PROFILES / "hi6" / "memory_map.example.json", catalog=catalog)
+        m = MemoryMap.from_json(HI6_MAP, catalog=catalog)
         axis_1_3, axis_4_6 = m.sockets
         # 손으로 옮겨 두었던 holding 25000~25009 (command, params1_type, start_axis, 공란, axis_1~3) 와 같은 번지여야 한다
         expect([axis_1_3.base + p.offset // 2 for p in axis_1_3.points], [25004, 25006, 25008])
@@ -199,34 +200,35 @@ def run_builtin_suite(runner: SmokeRunner) -> None:
         return m.describe_plan().replace("\n", " | ")
 
     def read_cycle() -> str:
-        m = MemoryMap.from_json(PROFILES / "hi6" / "memory_map.example.json", catalog=catalog)
+        m = MemoryMap.from_json(HI6_MAP, catalog=catalog)
         device = FakeHi6()
         # 이웃한 두 소켓(S2000, S2020)은 한 요청으로 읽는다
         expect([(g[0].base, len(g)) for g in m.socket_plan], [(25000, 2)])
 
         # 부팅 직후: 소켓이 비어 있어 command 먼저, parameter 나중에 쓰고 이번 값은 E-3101
-        samples = m.read(device)
+        sockets = m.read_sockets(device)
         expect(device.reads, [(25000, 20)])
         expect(device.writes, [(25000, [120]), (25001, [1, 1]), (25010, [120]), (25011, [1, 4])])
-        expect({s.error for s in samples}, {"E-3101"})
+        expect([(s.error, s.value, s.blocks) for s in sockets], [("E-3101", None, [0] * 20)] * 2)
 
-        # 로봇이 result 를 채운 뒤: 쓰기 없이 값만 나온다
+        # 로봇이 result 를 채운 뒤: 쓰기 없이 소켓마다 result 묶음이 나온다
         device.writes.clear()
         for register, value in ((25004, 10.5), (25016, -2.25)):
             device.registers[register], device.registers[register + 1] = blocks_to_registers(struct.pack("<f", value))
-        samples = m.read(device)
+        axis_1_3, axis_4_6 = m.read_sockets(device)
         expect(device.writes, [])
-        values = MemoryMap.values(samples)
-        expect((values["axis_1_3.axis_0_value"], values["axis_4_6.axis_1_value"]), (10.5, -2.25))
-        first = samples[0]
-        expect((first.addr, first.type.value), ("S2008", "f32"))
+        expect((axis_1_3.command, axis_1_3.command_name, axis_1_3.params), (120, "GET_AXIS_INFO", {"type": 1, "start_axis_no": 1}))
+        expect(axis_1_3.value, {"axis_0_value": 10.5, "axis_1_value": 0.0, "axis_2_value": 0.0})
+        expect((axis_4_6.params["start_axis_no"], axis_4_6.value["axis_1_value"]), (4, -2.25))
+        expect((len(axis_1_3.blocks), axis_1_3.blocks[:6]), (20, [120, 0, 1, 0, 1, 0]))
+        expect(axis_1_3.error, None)
 
         # 재부팅으로 초기화되면 다음 읽기에서 다시 쓴다
         device.reboot()
-        samples = m.read(device)
+        sockets = m.read_sockets(device)
         expect(len(device.writes), 4)
-        expect({s.error for s in samples}, {"E-3101"})
-        return "boot -> rewrite(E-3101) -> values -> reboot -> rewrite"
+        expect({s.error for s in sockets}, {"E-3101"})
+        return axis_4_6.model_dump_json()
 
     def variants_share_command() -> str:
         # parameter 값마다 result 배치가 다른 command 는 command_name 을 나눠 같은 번호를 쓴다
@@ -250,8 +252,10 @@ def run_builtin_suite(runner: SmokeRunner) -> None:
         loaded = []
         for catalog_path in sorted(PROFILES.glob("*/*.csv")):
             profile_catalog = load_catalog(catalog_path)
-            map_path = catalog_path.with_name("memory_map.example.json")
-            sockets = len(MemoryMap.from_json(map_path, catalog=profile_catalog).sockets) if map_path.exists() else 0
+            sockets = sum(
+                len(MemoryMap.from_json(map_path, catalog=profile_catalog).sockets)
+                for map_path in catalog_path.parent.glob("*memory_map*.json")
+            )
             loaded.append(f"{catalog_path.relative_to(PROFILES)}: {len(profile_catalog.commands)} commands, {sockets} sockets")
         expect(bool(loaded), True)
         return ", ".join(loaded)
