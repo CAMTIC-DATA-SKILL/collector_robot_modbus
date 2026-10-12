@@ -19,8 +19,10 @@ class ZmqPubClient(BaseZmqClient):
     def __init__(self, endpoint: str, *, bind: bool = True, linger_ms: int = 0) -> None:
         super().__init__(endpoint, bind=bind, linger_ms=linger_ms)
 
-    def send(self, header: ProtocolHeaderDTO, *, topic: str) -> None:
-        frames = [topic.encode("utf-8"), header.model_dump_json().encode("utf-8")]
+    def send(self, header: ProtocolHeaderDTO, *, topic: str) -> str:
+        """보낸 header JSON 을 그대로 돌려준다."""
+        payload = header.model_dump_json()
+        frames = [topic.encode("utf-8"), payload.encode("utf-8")]
         try:
             self.sock.send_multipart(frames, flags=zmq.NOBLOCK)
         except zmq.Again as e:
@@ -28,3 +30,4 @@ class ZmqPubClient(BaseZmqClient):
         except zmq.ZMQError as e:
             raise ZmqClientError(ZmqErrorCode.WRITE_FAILED, f"{self._target()}: {e}") from e
         logger.debug("zmq pub [%s] %s", topic, header.msg_type.value)
+        return payload

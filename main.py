@@ -5,7 +5,6 @@
 수집 스레드는 연결 → 읽기 → data PUB 을 돌고 연결 상태가 바뀌면 health 를 PUB 한다.
 메인 스레드는 게이트웨이 cmd 를 SUB 하고 ack 를 PUB 한다.
 """
-import json
 import logging
 import signal
 import threading
@@ -71,17 +70,8 @@ def load_memory_map() -> MemoryMap:
     return MemoryMap.from_json(*settings.memory_map_files, catalog=catalog)
 
 
-def report(samples: list[Sample], sockets: list[SocketSample]) -> None:
-    values: dict = MemoryMap.values(samples)
-    values.update({s.name: s.value for s in sockets if s.error is None})
-    logger.info("%s", json.dumps(values, ensure_ascii=False))
-    errors = {s.name: s.error for s in [*samples, *sockets] if s.error}
-    if errors:
-        logger.warning("read errors: %s", errors)
-
-
 def emit(zmq: ZeroMqClient, msg_type: MsgTypeEnum, body: BaseModel, *, gateway_address: str | None = None) -> None:
-    """헤더를 씌워 PUB 한다. 송신 실패는 수집을 멈추지 않도록 로그만 남긴다."""
+    """헤더를 씌워 PUB 하고 실제로 보낸 JSON 을 로그로 남긴다. 송신 실패는 수집을 멈추지 않도록 로그만 남긴다."""
     header = ProtocolHeaderDTO(
         msg_id=uuid4(),
         gateway_address=gateway_address or settings.gateway_address,
@@ -90,11 +80,12 @@ def emit(zmq: ZeroMqClient, msg_type: MsgTypeEnum, body: BaseModel, *, gateway_a
         msg_body=body.model_dump(mode="json"),
         timestamp_ms=now_ms(),
     )
-    logger.debug("[%s] %s", msg_type.value.upper(), header.model_dump_json())
     try:
-        zmq.send(header)
+        payload = zmq.send(header)
     except ZmqClientError as e:
-        logger.warning("zmq pub failed: %s", e)
+        logger.warning("[%s] zmq pub failed: %s", msg_type.value.upper(), e)
+        return
+    logger.info("[%s] %s", msg_type.value.upper(), payload)
 
 
 def emit_health(zmq: ZeroMqClient, *, device_ok: bool, reason: str | None = None) -> None:
@@ -135,7 +126,6 @@ def collect(stop: threading.Event, memory_map: MemoryMap, zmq: ZeroMqClient) -> 
             if not device_ok:
                 emit_health(zmq, device_ok=True)
                 device_ok = True
-            report(samples, sockets)
             emit_data(zmq, samples, sockets)
             stop.wait(max(0.0, settings.poll_interval - (time.monotonic() - started)))
     finally:
@@ -185,7 +175,11 @@ def serve_commands(stop: threading.Event, zmq: ZeroMqClient) -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=settings.log_level,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     stop = threading.Event()
     signal.signal(signal.SIGINT, lambda *_: stop.set())
     signal.signal(signal.SIGTERM, lambda *_: stop.set())

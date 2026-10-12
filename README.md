@@ -49,15 +49,22 @@ python main.py
 ```
 
 `.env` 의 `MODBUS_MODE`(tcp/rtu) 접속 정보로 연결하고, `MEMORY_MAP_FILE` 의 포인트를
-`POLL_INTERVAL_SEC` 마다 읽어 로그로 출력하고 ZeroMQ 로 게이트웨이에 보낸다.
+`POLL_INTERVAL_SEC` 마다 읽어 ZeroMQ 로 게이트웨이에 보낸다.
 연결이 끊기면 `RECONNECT_INTERVAL_SEC` 후 다시 연결한다.
 시작 시 실제로 나갈 읽기 요청(묶인 범위)을 먼저 출력한다.
 
+로그는 collector-plc 와 같은 형식이다. PUB 은 송신에 성공한 헤더 JSON 을 `[DATA]` / `[HEALTH]` / `[ACK]` 로,
+SUB 은 이 collector 대상 cmd 를 `[SUB CMD_R]` / `[SUB CMD_W]` 로 INFO 에 그대로 남긴다.
+포인트 읽기 오류는 따로 찍지 않고 `[DATA]` 의 `error` 필드로 확인한다. 송신 실패는 `[DATA] zmq pub failed: ...` WARNING 이다.
+
 ```
-INFO collector: memory map memory_map.json, read plan:
+2026-10-12 17:52:00 [INFO] memory map memory_map.json, read plan:
 holding 0~13 (14 regs): status_code, sensor_mode, temperature, ...
-INFO collector: {"status_code": 1, "sensor_mode": 2, "temperature": 25.8, ...}
-WARNING collector: read errors: {'battery_voltage': 'E-2203'}
+2026-10-12 17:52:00 [INFO] ZeroMQ ready pub=bind:tcp://127.0.0.1:5557 sub=connect:tcp://127.0.0.1:5555
+2026-10-12 17:52:00 [INFO] [HEALTH] {"msg_id":"...","gateway_address":"gateway","collector_address":"robot-1","msg_type":"health","msg_body":{"device_key":"robot-1","ipc_ok":true,"device_ok":true,"reason":null,"observed_ms":1760259120000},"timestamp_ms":1760259120000}
+2026-10-12 17:52:00 [INFO] [DATA] {"msg_id":"...","gateway_address":"gateway","collector_address":"robot-1","msg_type":"data","msg_body":{"device_key":"robot-1","sample_ms":1760259120000,"samples":[...],"sockets":[...]},"timestamp_ms":1760259120000}
+2026-10-12 17:52:05 [INFO] [SUB CMD_R] {"msg_id":"...","gateway_address":"gateway","collector_address":"robot-1","msg_type":"cmd_r","msg_body":{"action":"SET_SCAN",...},"timestamp_ms":1760259125000}
+2026-10-12 17:52:05 [INFO] [ACK] {"msg_id":"...","gateway_address":"gateway","collector_address":"robot-1","msg_type":"ack","msg_body":{"ref_msg_id":"...","device_key":"robot-1","action":"SET_SCAN","status":"rejected","code":"E-4102",...},"timestamp_ms":1760259125000}
 ```
 
 ## 게이트웨이 IPC (ZeroMQ)

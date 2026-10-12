@@ -48,10 +48,11 @@ class ZeroMqClient:
         with self._sub_lock:
             self._sub.close()
 
-    def send(self, header: ProtocolHeaderDTO) -> None:
+    def send(self, header: ProtocolHeaderDTO) -> str:
+        """보낸 header JSON 을 그대로 돌려준다."""
         topic = topic_for(header.collector_address, header.msg_type)
         with self._pub_lock:
-            self._pub.send(header, topic=topic)
+            return self._pub.send(header, topic=topic)
 
     def recv(self) -> ProtocolHeaderDTO | None:
         with self._sub_lock:
