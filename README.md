@@ -115,7 +115,7 @@ python -m core.zeromq_client --device-key robot-1 --cmd cmd_r --action SET_SCAN
         "command": 120,
         "command_name": "GET_AXIS_INFO",
         "params": {"type": 1, "start_axis_no": 4},
-        "value": {"axis_0_value": 40.0, "axis_1_value": 50.5, "axis_2_value": 60.0},
+        "value": {"value_0": 40.0, "value_1": 50.5, "value_2": 60.0},
         "blocks": [120, 0, 1, 0, 4, 0, 0, 0, 0, 0, 32, 66, 0, 0, 74, 66, 0, 0, 112, 66],
         "error": null
       },
@@ -162,7 +162,7 @@ python -m core.zeromq_client --device-key robot-1 --cmd cmd_r --action SET_SCAN
 | `s_block` | int | 소켓 시작 S block (`2020` = `S2020`) |
 | `command` | int | 카탈로그 command 번호 |
 | `command_name` | str | 카탈로그 command 이름 |
-| `params` | object | 카탈로그 param 이름 → 맵에 적은 값. 같은 command 라도 이 값에 따라 `value` 의 의미가 달라진다 (예: `start_axis_no=4` 면 `axis_0_value` 는 4축) |
+| `params` | object | 카탈로그 param 이름 → 맵에 적은 값. 같은 command 라도 이 값에 따라 `value` 의 의미가 달라진다 (예: `start_axis_no=4` 면 `value_0` 는 4축) |
 | `value` | object / null | 카탈로그 data 이름 → 디코딩 값. 값의 모양은 `samples[].value` 와 같다. `error` 가 있으면 `null` |
 | `blocks` | list[int] / null | 읽은 20 block 원본(0~255, `blocks[0]` = `S{s_block}`). 카탈로그 전사 대조용. `E-3101` 이면 다시 쓰기 전에 읽은 값, 읽기 실패면 `null` |
 | `error` | str / null | 소켓 단위 오류 코드 |
@@ -279,7 +279,7 @@ TCP 전용: `--host`, `--port` / RTU 전용: `--port`, `--baudrate`, `--parity`(
 
 | 키 | 설명 |
 | --- | --- |
-| `addr` | 0-based 레지스터 번호. `100.5` 는 비트 하나, `100.8~F` 는 비트 구간 (0 = LSB, 10~15 는 A~F). `100.L` / `100.H` 는 하위 / 상위 바이트로 `100.0~7` / `100.8~F` 와 같고 섞어 써도 된다 |
+| `addr` | 0-based 레지스터 번호. `100.5` 는 비트 하나, `100.8~F` 는 비트 구간 (0 = LSB, 10~15 는 A~F). `100.L` / `100.H` 는 하위 / 상위 바이트로 `100.0~7` / `100.8~F` 와 같고 섞어 써도 된다. `holding` 은 HI6 S relay 표기(`S0100`, `S0100.3`)도 된다 ([HI6 S relay 주소 규칙](#hi6-s-relay-주소-규칙)) |
 | `type` | `u16` `i16` `u32` `i32` `u64` `i64` `f32` `f64` 는 레지스터 단위, `u8` `i8` `bit` 는 비트 구간으로 지정. `i16[6]` 처럼 배열 가능 |
 | `scale` | 디코딩 값에 곱할 배율 |
 | `format` | `dec`(기본) / `hex` / `bin`. 최상위에 두면 전체 기본값, 포인트에 두면 그 포인트만. hex / bin 은 scale 을 적용하지 않은 원시 비트를 `"0xFF38"` / `"0b00000101"` 처럼 낸다 |
@@ -321,6 +321,19 @@ S번호가 홀수 -> 상위 바이트 (.H = bit 8~F)
 | `S0001` | `24000.H` (`24000.8~F`) |
 | `S2000` | `25000.L` |
 | `S2019` | `25009.H` |
+
+`holding` 포인트의 `addr` 에는 S 표기를 그대로 적어도 된다. 같은 맵의 `s_relay_base` 로 위 표처럼 바꿔 읽고,
+`Sample.addr` 에는 적은 표기(`S0100`)가 그대로 실린다. 대소문자는 가리지 않는다.
+
+| addr | type | 읽는 위치 (`s_relay_base: 24000`) |
+| --- | --- | --- |
+| `S0100` / `S0101` | `u8` `i8` | `24050.L` / `24050.H` |
+| `S0100.3` / `S0101.3` | `bit` | `24050.3` / `24050.B` (block 안의 비트 0~7) |
+| `S0100` | `u16` `i16[4]` `f32` 등 레지스터 단위 | `24050` 부터 (S 번호는 짝수여야 한다) |
+
+- `s_relay_base` 가 없거나, `input` 에 S 표기를 쓰면 시작할 때 거부한다 (S relay 는 holding 영역이다).
+- 레지스터 단위 type 을 홀수 S 에 두면 거부한다. 레지스터 경계에 걸친 여러 block 값은 아래 [소켓](#소켓-command-를-쓰면-result-를-채워-주는-영역) 의 카탈로그(`s2`, `f4` 등)로 읽는다.
+- `bit` 는 `S0100.3` 처럼 비트 번호까지 적는다.
 
 여러 block 값은 S 번호가 작은 block 이 하위 바이트인 little endian 이다. 2 레지스터 이상인 값이 레지스터 경계에
 맞으면 메모리 맵 `word_endian: "le"`(앞 레지스터가 하위 word)와 같은 값이 된다.
@@ -379,7 +392,7 @@ python script/smoke_socket_map.py --catalog profiles/hi6/hi6_s_relay_command_cat
 command,command_name,section,offset,type,name,scale,format,unit,description
 120,GET_AXIS_INFO,param,2,s2,type,1,decimal,,"1=현재위치(축각도), ..."
 120,GET_AXIS_INFO,param,4,s2,start_axis_no,1,decimal,,시작 축 번호 (1~)
-120,GET_AXIS_INFO,data,8,f4,axis_0_value,1,decimal,,(시작축 + 0축) 해당값
+120,GET_AXIS_INFO,data,8,f4,value_0,1,decimal,,(시작축 + 0축) 해당값
 170,GET_HW_INFO,data,2,s2,cpu_temperature,0.1,decimal,,cpu 온도 * 10
 1010,GET_PROFIBUS_DP_STATUS,data,4,byte[16],status_or_slave_bitmap,1,binary,,Node/슬레이브 상태 bitmap
 ```
@@ -423,7 +436,7 @@ Modbus 레지스터(HI6 는 24000)이고 `sockets` 를 쓰면 반드시 적는�
 `setup` 은 command·parameter 자리를 덮는 레지스터 값이고, parameter 사이에 낀 result 자리는 0 으로 둔다.
 
 ```
-socket axis_1_3 S2000~S2019 -> holding 25000~25009 GET_AXIS_INFO(=120)(type=1, start_axis_no=1): setup 25000~25002=[120, 1, 1], result: axis_0_value(S2008 f4), axis_1_value(S2012 f4), axis_2_value(S2016 f4)
+socket axis_1_3 S2000~S2019 -> holding 25000~25009 GET_AXIS_INFO(=120)(type=1, start_axis_no=1): setup 25000~25002=[120, 1, 1], result: value_0(S2008 f4), value_1(S2012 f4), value_2(S2016 f4)
 socket tool S2040~S2059 -> holding 25020~25029 GET_TOOL_INFO(=174)(tool_no=3, tool_data_type=2): setup 25020~25021=[174, 515], result: tool_weight(S2044 f4), ...
 ```
 

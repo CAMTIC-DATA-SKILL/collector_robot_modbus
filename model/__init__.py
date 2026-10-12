@@ -2,6 +2,7 @@ from .catalog_model import COMMAND_BLOCKS, CatalogPoint, CatalogType, CommandCat
 from .memory_map_model import (
     MAX_READ_REGISTERS,
     MAX_REGISTER,
+    S_RELAY_BASE_CONTEXT,
     SOCKET_BLOCKS,
     SOCKET_REGISTERS,
     MemoryMapPoint,
@@ -32,6 +33,7 @@ __all__ = [
     "COMMAND_BLOCKS",
     "MAX_READ_REGISTERS",
     "MAX_REGISTER",
+    "S_RELAY_BASE_CONTEXT",
     "SOCKET_BLOCKS",
     "SOCKET_REGISTERS",
     "AckCode",

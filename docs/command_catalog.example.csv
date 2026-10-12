@@ -7,14 +7,14 @@
 100,GET_TASK_INFO,data,12,s2,task_main_program_no,1,decimal,,task 메인 프로그램 번호
 120,GET_AXIS_INFO,param,2,s2,type,1,decimal,,"1=현재위치(축각도), 2=현재위치(베이스좌표), 3=현재위치(베이스좌표/User좌표), 6=축속도, 7=모터속도, 8=부가축 속도제어시 모터속도(rpm) 지령값, 10=부하율(I/Ir), 11=부하율(I/Ip), 12=부하율(연속), 15=엔코더(온도), 18=축별누적거리"
 120,GET_AXIS_INFO,param,4,s2,start_axis_no,1,decimal,,시작 축 번호 (1~)
-120,GET_AXIS_INFO,data,8,f4,axis_0_value,1,decimal,,(시작축 + 0축) 해당값
-120,GET_AXIS_INFO,data,12,f4,axis_1_value,1,decimal,,(시작축 + 1축) 해당값
-120,GET_AXIS_INFO,data,16,f4,axis_2_value,1,decimal,,(시작축 + 2축) 해당값
+120,GET_AXIS_INFO,data,8,f4,value_0,1,decimal,,(시작축 + 0축) 해당값
+120,GET_AXIS_INFO,data,12,f4,value_1,1,decimal,,(시작축 + 1축) 해당값
+120,GET_AXIS_INFO,data,16,f4,value_2,1,decimal,,(시작축 + 2축) 해당값
 121,SET_AXIS_INFO,param,2,s2,type,1,decimal,rpm,8=부가축 속도제어시 모터속도 (rpm) 지령값
 121,SET_AXIS_INFO,param,4,s2,start_axis_no,1,decimal,,시작 축 번호 (1~)
-121,SET_AXIS_INFO,param,8,f4,axis_0_value,1,decimal,,(시작축 + 0축) 해당값
-121,SET_AXIS_INFO,param,12,f4,axis_1_value,1,decimal,,(시작축 + 1축) 해당값
-121,SET_AXIS_INFO,param,16,f4,axis_2_value,1,decimal,,(시작축 + 2축) 해당값
+121,SET_AXIS_INFO,param,8,f4,value_0,1,decimal,,(시작축 + 0축) 해당값
+121,SET_AXIS_INFO,param,12,f4,value_1,1,decimal,,(시작축 + 1축) 해당값
+121,SET_AXIS_INFO,param,16,f4,value_2,1,decimal,,(시작축 + 2축) 해당값
 140,GETSET_TP_APP,param,2,s2,get_app_shortcut_no,1,decimal,,현재 TP app의 단축키 번호 (1~9)
 140,GETSET_TP_APP,param,4,s2,set_app_shortcut_no,1,decimal,,상태를 읽거나 제어할 대상 TP app의 단축키 번호 (1~9)
 140,GETSET_TP_APP,data,6,s2,app_state,1,decimal,,"대상 TP app 상태 현재값 (-1=없음, 0=미실행, 1=활성, 2=비활성)"

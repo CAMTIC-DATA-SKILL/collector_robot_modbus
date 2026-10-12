@@ -113,7 +113,7 @@ def run_builtin_suite(runner: SmokeRunner) -> None:
         # 정렬된 f4 는 기존 메모리 맵 f32 (word_endian le) 와 같은 값이어야 한다
         raw = struct.pack("<f", 12.5)
         registers = [120, 1, 1, 0, *blocks_to_registers(raw), 0, 0, 0, 0]
-        by_block = decode_point(point("GET_AXIS_INFO", "axis_0_value"), registers_to_blocks(registers))
+        by_block = decode_point(point("GET_AXIS_INFO", "value_0"), registers_to_blocks(registers))
         m = MemoryMap.from_dict({"word_endian": "le", "holding": [{"addr": "4", "type": "f32", "name": "v"}]})
         expect((by_block, m.decode(m.settings.holding[0], registers[4:6])), (12.5, 12.5))
         return "f4@8 == f32 @ register 4 (le) == 12.5"
@@ -225,8 +225,8 @@ def run_builtin_suite(runner: SmokeRunner) -> None:
         axis_1_3, axis_4_6 = m.read_sockets(device)
         expect(device.writes, [])
         expect((axis_1_3.command, axis_1_3.command_name, axis_1_3.params), (120, "GET_AXIS_INFO", {"type": 1, "start_axis_no": 1}))
-        expect(axis_1_3.value, {"axis_0_value": 10.5, "axis_1_value": 0.0, "axis_2_value": 0.0})
-        expect((axis_4_6.params["start_axis_no"], axis_4_6.value["axis_1_value"]), (4, -2.25))
+        expect(axis_1_3.value, {"value_0": 10.5, "value_1": 0.0, "value_2": 0.0})
+        expect((axis_4_6.params["start_axis_no"], axis_4_6.value["value_1"]), (4, -2.25))
         expect((len(axis_1_3.blocks), axis_1_3.blocks[:6]), (20, [120, 0, 1, 0, 1, 0]))
         expect(axis_1_3.error, None)
 
@@ -236,6 +236,23 @@ def run_builtin_suite(runner: SmokeRunner) -> None:
         expect(len(device.writes), 4)
         expect({s.error for s in sockets}, {"E-3101"})
         return axis_4_6.model_dump_json()
+
+    def holding_s_notation() -> str:
+        m = MemoryMap.from_dict({"s_relay_base": HI6_S_RELAY_BASE, "holding": [
+            {"addr": "S0100", "type": "u8", "name": "even_block"},
+            {"addr": "S0101", "type": "i8", "name": "odd_block"},
+            {"addr": "S0100.3", "type": "bit", "name": "even_bit"},
+            {"addr": "s0101.2", "type": "bit", "name": "odd_bit"},
+            {"addr": "S0102", "type": "f32", "name": "real"},
+        ]})
+        expect(
+            [(p.register, p.bits) for p in m.settings.holding],
+            [(24050, (0, 7)), (24050, (8, 15)), (24050, (3, 3)), (24050, (10, 10)), (24051, None)],
+        )
+        # addr 는 적은 그대로 Sample 에 실린다
+        expect(m.settings.holding[4].addr, "S0102")
+        expect([(r.start, r.count) for r in m.plan], [(24050, 3)])
+        return "S0100->24050.L, S0101->24050.H, S0100.3->24050.3, S0101.2->24050.A, S0102 f32->24051~24052"
 
     def variants_share_command() -> str:
         # parameter 값마다 result 배치가 다른 command 는 command_name 을 나눠 같은 번호를 쓴다
@@ -279,6 +296,7 @@ def run_builtin_suite(runner: SmokeRunner) -> None:
     runner.check("map without sockets unchanged (+ bin format)", no_sockets_unchanged)
     runner.check("hi6 profile example = hand-written holding 25000~25009", hi6_profile_matches_manual_map)
     runner.check("read cycle: verify -> rewrite (command first) -> decode", read_cycle)
+    runner.check("holding addr in HI6 S notation", holding_s_notation)
     runner.check("variant command_names share one command number", variants_share_command)
     runner.check("profiles/*/ catalogs + examples load", profile_catalogs_load)
 
@@ -302,6 +320,14 @@ def run_builtin_suite(runner: SmokeRunner) -> None:
         ("control (SET) command in socket",
          lambda: MemoryMap.from_dict(_sockets({**task, "command": "SET_AXIS_INFO", "params": [8, 1, 0, 0, 0]}),
                                      catalog=catalog), "제어 command"),
+        ("S notation without s_relay_base",
+         lambda: MemoryMap.from_dict({"holding": [{"addr": "S0100", "type": "u8", "name": "a"}]}), "s_relay_base"),
+        ("S notation u16 on odd block",
+         lambda: MemoryMap.from_dict(_sockets(holding=[{"addr": "S0101", "type": "u16", "name": "a"}])), "짝수 S"),
+        ("S notation bit without bit index",
+         lambda: MemoryMap.from_dict(_sockets(holding=[{"addr": "S0100", "type": "bit", "name": "a"}])), "S0100.3"),
+        ("S notation in input",
+         lambda: MemoryMap.from_dict(_sockets(input=[{"addr": "S0100", "type": "u8", "name": "a"}])), "input"),
         ("non HI6 type", lambda: _command(params=[(2, "u16")], data=[(4, "s2")]), "알 수 없는 type"),
         ("offset in command slot", lambda: _command(params=[(1, "s2")], data=[(4, "s2")]), "command 자리"),
         ("value past 20 blocks", lambda: _command(params=[(2, "s2")], data=[(18, "f4")]), "20 block"),

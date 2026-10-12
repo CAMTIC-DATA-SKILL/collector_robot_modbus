@@ -29,6 +29,7 @@ from typing import Any
 
 from model import (
     MAX_READ_REGISTERS,
+    S_RELAY_BASE_CONTEXT,
     SOCKET_BLOCKS,
     CommandCatalog,
     MemoryMapPoint,
@@ -91,7 +92,9 @@ class MemoryMap:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any], catalog: CommandCatalog | None = None) -> "MemoryMap":
-        return cls(MemoryMapSettings.model_validate(raw), catalog=catalog)
+        # 포인트 addr 의 S 표기(S0100)는 같은 맵의 s_relay_base 로 레지스터를 구한다
+        context = {S_RELAY_BASE_CONTEXT: raw.get("s_relay_base")}
+        return cls(MemoryMapSettings.model_validate(raw, context=context), catalog=catalog)
 
     def read(self, client: BaseModbusClient) -> list[Sample]:
         """계획된 요청으로 holding / input 포인트를 읽는다. 연결 계열 에러만 예외로 올리고 나머지는 Sample.error 에 담는다."""
