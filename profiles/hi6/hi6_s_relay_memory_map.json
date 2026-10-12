@@ -11,9 +11,7 @@
     {"addr": "S0010", "type": "u8", "name": "current_hour"},
     {"addr": "S0011", "type": "u8", "name": "current_minute"},
     {"addr": "S0012", "type": "u8", "name": "current_seconds"},
-    {"addr": "S0041", "type": "u8", "name": "robot status (0: stop, 1: run, 2: wait)"},
-    {"addr": "S0012", "type": "u8", "name": "current_seconds"}
-
+    {"addr": "S0041", "type": "u8", "name": "robot status (0: stop, 1: run, 2: wait)"}
   ],
   "sockets": [
     {"name": "axis_angle_01_03", "s_block": 2000, "command": "GET_AXIS_INFO", "params": [1, 1]},
